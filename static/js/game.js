@@ -273,6 +273,11 @@ class MMOPacmanGame {
                 }, 3000);
             }
         });
+        
+        this.socket.on('game_ended', (data) => {
+            console.log('Game ended with leaderboard:', data);
+            this.showLeaderboard(data.message, data.leaderboard);
+        });
     }
     
     joinGame() {
@@ -502,7 +507,21 @@ class MMOPacmanGame {
                 }
                 
                 if (player.power_mode) {
-                    this.ctx.fillStyle = `rgba(255, 107, 107, ${alpha})`; // Red when powered
+                    let powerColor = [255, 107, 107]; // Red when powered
+                    
+                    // Flash rapidly when power mode is about to end
+                    if (player.power_mode_flashing) {
+                        // Faster flashing for warning (between red and normal color)
+                        const flashRate = Math.sin(Date.now() * 0.05); // Faster than invincibility flash
+                        if (flashRate > 0) {
+                            powerColor = [255, 107, 107]; // Keep red color
+                        } else {
+                            // Flash to normal player color
+                            powerColor = playerId === this.playerId ? [255, 255, 0] : [255, 170, 0];
+                        }
+                    }
+                    
+                    this.ctx.fillStyle = `rgba(${powerColor[0]}, ${powerColor[1]}, ${powerColor[2]}, ${alpha})`;
                 } else {
                     const color = playerId === this.playerId ? [255, 255, 0] : [255, 170, 0];
                     this.ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha})`;
@@ -752,6 +771,48 @@ class MMOPacmanGame {
                 Waiting for next round to start...
             </div>
         `;
+    }
+
+    showLeaderboard(message, leaderboard) {
+        // Create leaderboard HTML
+        let leaderboardHTML = `
+            <div style="background: rgba(0,0,0,0.9); color: white; padding: 20px; border-radius: 10px; margin: 20px; text-align: center; max-width: 400px; margin: 20px auto;">
+                <h2>${message}</h2>
+                <table style="width: 100%; margin-top: 20px; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #fff;">
+                            <th style="padding: 10px; text-align: left;">#</th>
+                            <th style="padding: 10px; text-align: left;">Player</th>
+                            <th style="padding: 10px; text-align: right;">Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        leaderboard.forEach((player, index) => {
+            const rank = index + 1;
+            const trophy = rank === 1 ? '🏆' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+            leaderboardHTML += `
+                <tr style="border-bottom: 1px solid #666;">
+                    <td style="padding: 8px;">${rank}${trophy}</td>
+                    <td style="padding: 8px;">${player.name}</td>
+                    <td style="padding: 8px; text-align: right; font-weight: bold;">${player.score}</td>
+                </tr>
+            `;
+        });
+        
+        leaderboardHTML += `
+                    </tbody>
+                </table>
+                <p style="margin-top: 20px; font-style: italic;">New players can join to start a new game!</p>
+            </div>
+        `;
+        
+        // Show leaderboard overlay
+        document.getElementById('game-status').innerHTML = leaderboardHTML;
+        
+        // Also show in join status area
+        this.showJoinStatus('Game Over! Check the leaderboard above.', false);
     }
 
     showGameOver() {

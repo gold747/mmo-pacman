@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MMO Pacman Multi-Tab Tester</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #222; 
+            color: white; 
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+        }
+        .control-panel { 
+            background: #333; 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-bottom: 20px; 
+        }
+        .tab-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+            gap: 10px; 
+        }
+        .game-tab { 
+            border: 2px solid #555; 
+            border-radius: 8px; 
+            height: 400px; 
+            background: white; 
+        }
+        .tab-header { 
+            background: #444; 
+            padding: 10px; 
+            font-size: 14px; 
+            border-radius: 6px 6px 0 0; 
+        }
+        button { 
+            padding: 10px 20px; 
+            margin: 5px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 14px; 
+        }
+        .start-btn { 
+            background: #4CAF50; 
+            color: white; 
+        }
+        .stop-btn { 
+            background: #f44336; 
+            color: white; 
+        }
+        .status { 
+            background: #111; 
+            padding: 10px; 
+            border-radius: 5px; 
+            margin: 10px 0; 
+            font-family: monospace; 
+            font-size: 12px; 
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #444;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        input, select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            background: #222;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎮 MMO Pacman Multi-Tab Tester</h1>
+        
+        <div class="control-panel">
+            <h2>Test Configuration</h2>
+            <div>
+                <label>Number of Tabs: </label>
+                <select id="tabCount">
+                    <option value="2">2 Tabs</option>
+                    <option value="3">3 Tabs</option>
+                    <option value="5" selected>5 Tabs</option>
+                    <option value="10">10 Tabs</option>
+                    <option value="15">15 Tabs</option>
+                    <option value="20">20 Tabs</option>
+                </select>
+                
+                <label>Server URL: </label>
+                <input type="text" id="serverUrl" value="http://localhost:5000" style="width: 200px;">
+                
+                <label>Auto-move: </label>
+                <input type="checkbox" id="autoMove" checked>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button class="start-btn" onclick="startMultiTabTest()">🚀 Start Multi-Tab Test</button>
+                <button class="stop-btn" onclick="stopAllTabs()">⏹️ Stop All Tabs</button>
+                <button onclick="openGameTabs()">🔗 Open Manual Tabs</button>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="openTabs">0</div>
+                    <div>Open Tabs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="connectedTabs">0</div>
+                    <div>Connected</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="playingTabs">0</div>
+                    <div>Playing</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="spectatorTabs">0</div>
+                    <div>Spectating</div>
+                </div>
+            </div>
+            
+            <div class="status" id="status">
+                Ready to start multiplayer test...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let openWindows = [];
+        let testStats = {
+            openTabs: 0,
+            connectedTabs: 0,
+            playingTabs: 0,
+            spectatorTabs: 0
+        };
+
+        function updateStatus(message) {
+            const statusEl = document.getElementById('status');
+            const timestamp = new Date().toLocaleTimeString();
+            statusEl.innerHTML += `[${timestamp}] ${message}<br>`;
+            statusEl.scrollTop = statusEl.scrollHeight;
+        }
+
+        function updateStats() {
+            document.getElementById('openTabs').textContent = testStats.openTabs;
+            document.getElementById('connectedTabs').textContent = testStats.connectedTabs;
+            document.getElementById('playingTabs').textContent = testStats.playingTabs;
+            document.getElementById('spectatorTabs').textContent = testStats.spectatorTabs;
+        }
+
+        function startMultiTabTest() {
+            const tabCount = parseInt(document.getElementById('tabCount').value);
+            const serverUrl = document.getElementById('serverUrl').value;
+            const autoMove = document.getElementById('autoMove').checked;
+            
+            updateStatus(`Starting ${tabCount} tab test...`);
+            
+            // Close any existing windows
+            stopAllTabs();
+            
+            // Open multiple game tabs
+            for (let i = 0; i < tabCount; i++) {
+                setTimeout(() => {
+                    const playerName = `TestPlayer${i + 1}`;
+                    const gameUrl = `${serverUrl}?autoTest=true&playerName=${playerName}&autoMove=${autoMove}`;
+                    
+                    const newWindow = window.open(gameUrl, `game_${i}`, 
+                        'width=600,height=500,scrollbars=yes,resizable=yes');
+                    
+                    if (newWindow) {
+                        openWindows.push(newWindow);
+                        testStats.openTabs++;
+                        updateStats();
+                        updateStatus(`Opened tab ${i + 1}: ${playerName}`);
+                    } else {
+                        updateStatus(`Failed to open tab ${i + 1} - popup blocked?`);
+                    }
+                }, i * 500); // Stagger window opening
+            }
+            
+            updateStatus(`${tabCount} tabs scheduled to open`);
+            
+            // Start monitoring
+            startMonitoring();
+        }
+
+        function openGameTabs() {
+            const tabCount = parseInt(document.getElementById('tabCount').value);
+            const serverUrl = document.getElementById('serverUrl').value;
+            
+            updateStatus(`Opening ${tabCount} manual game tabs...`);
+            
+            for (let i = 0; i < tabCount; i++) {
+                setTimeout(() => {
+                    const newWindow = window.open(serverUrl, `manual_game_${i}`, 
+                        'width=600,height=500,scrollbars=yes,resizable=yes');
+                    
+                    if (newWindow) {
+                        openWindows.push(newWindow);
+                        testStats.openTabs++;
+                        updateStats();
+                    }
+                }, i * 200);
+            }
+        }
+
+        function stopAllTabs() {
+            updateStatus(`Closing ${openWindows.length} tabs...`);
+            
+            openWindows.forEach((window, index) => {
+                if (window && !window.closed) {
+                    window.close();
+                    updateStatus(`Closed tab ${index + 1}`);
+                }
+            });
+            
+            openWindows = [];
+            testStats = {
+                openTabs: 0,
+                connectedTabs: 0,
+                playingTabs: 0,
+                spectatorTabs: 0
+            };
+            updateStats();
+            updateStatus('All tabs closed');
+        }
+
+        function startMonitoring() {
+            // Check window status every 2 seconds
+            const monitorInterval = setInterval(() => {
+                let openCount = 0;
+                
+                openWindows.forEach((window, index) => {
+                    if (window && !window.closed) {
+                        openCount++;
+                    }
+                });
+                
+                if (openCount !== testStats.openTabs) {
+                    testStats.openTabs = openCount;
+                    updateStats();
+                    
+                    if (openCount === 0) {
+                        clearInterval(monitorInterval);
+                        updateStatus('All tabs closed - monitoring stopped');
+                    }
+                }
+            }, 2000);
+        }
+
+        // Handle page unload
+        window.addEventListener('beforeunload', () => {
+            stopAllTabs();
+        });
+
+        // Initial status
+        updateStatus('Multi-tab tester ready!');
+        updateStatus('Configure settings above and click "Start Multi-Tab Test"');
+        updateStats();
+    </script>
+</body>
+</html>

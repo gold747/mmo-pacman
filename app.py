@@ -60,11 +60,31 @@ game_state = GameState()
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    import socket
+    import requests
+    
+    # Get local IP
+    try:
+        # Try to get external IP
+        response = requests.get('https://api.ipify.org', timeout=5)
+        server_ip = response.text.strip()
+    except:
+        try:
+            # Fallback to local network IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))
+            server_ip = s.getsockname()[0]
+            s.close()
+        except:
+            server_ip = 'localhost'
+    
+    server_port = 5000  # Default Flask port
+    
+    return render_template('index.html', server_ip=server_ip, server_port=server_port)
 
 @socketio.on('connect')
-def on_connect():
-    logger.info(f'🔌 Client {request.sid} connected')
+def on_connect(*args):
+    logger.info(f'Client {request.sid} connected')
     
 @socketio.on('disconnect')
 def on_disconnect():
@@ -112,7 +132,7 @@ def on_join_game(data):
             'position': {'x': player.x, 'y': player.y},
             'score': player.score
         }, broadcast=True, include_self=False)
-        logger.info(f'✅ Player {player_name} successfully joined the game')
+        logger.info(f'Player {player_name} successfully joined the game')
     else:
         logger.warning(f'[ERROR] Failed to add player - game full or no spawn points')
         emit('game_full', {'message': 'Game is full. Maximum 30 players allowed.'})
@@ -142,7 +162,7 @@ def on_player_move(data):
             
             # Handle pellet collection
             if pellet_collected:
-                logger.info(f'🔵 Player {request.sid} collected pellet at ({int(player.x // 20)}, {int(player.y // 20)}), score: {player.score}')
+                logger.info(f'[PELLET] Player {request.sid} collected pellet at ({int(player.x // 20)}, {int(player.y // 20)}), score: {player.score}')
                 emit('pellet_collected', {
                     'player_id': request.sid,
                     'pellet_pos': {'x': int(player.x // 20), 'y': int(player.y // 20)},
@@ -151,7 +171,7 @@ def on_player_move(data):
             
             # Handle power pellet collection
             if power_pellet_collected:
-                logger.info(f'🟡 Player {request.sid} collected POWER PELLET at ({int(player.x // 20)}, {int(player.y // 20)}), score: {player.score}, power_mode: {player.power_mode}, power_timer: {player.power_timer}')
+                logger.info(f'Player {request.sid} collected POWER PELLET at ({int(player.x // 20)}, {int(player.y // 20)}), score: {player.score}, power_mode: {player.power_mode}, power_timer: {player.power_timer}')
                 emit('power_pellet_collected', {
                     'player_id': request.sid,
                     'pellet_pos': {'x': int(player.x // 20), 'y': int(player.y // 20)},
@@ -178,6 +198,18 @@ def game_loop():
                 round_end = game_state.check_round_end()
                 if round_end:
                     logger.info(f"[ROUND_END] {round_end['message']}")
+                    
+                    # Check if we should show leaderboard (no players left)
+                    if round_end['type'] == 'no_players' or (round_end['type'] == 'all_dead' and len(game_state.players) == 0):
+                        logger.info("[LEADERBOARD] All players gone, showing final leaderboard")
+                        socketio.emit('game_ended', {
+                            'message': 'Game Over! Final Results:',
+                            'leaderboard': game_state.get_leaderboard()
+                        }, namespace='/')
+                        # Don't restart - wait for new players
+                        socketio.sleep(30)  # Show leaderboard for 30 seconds
+                        continue
+                    
                     socketio.emit('round_ended', {
                         'reason': round_end['type'],
                         'message': round_end['message'],

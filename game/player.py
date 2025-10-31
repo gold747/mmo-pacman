@@ -13,6 +13,7 @@ class Player:
         self.invincibility_timer = 0
         self.is_spectator = False
         self.death_time = 0
+        self.power_mode_flashing = False  # True when power mode is about to end
         
     def to_dict(self):
         """Convert player to dictionary for JSON serialization"""
@@ -24,6 +25,7 @@ class Player:
             'score': self.score,
             'lives': self.lives,
             'power_mode': self.power_mode,
+            'power_mode_flashing': self.power_mode_flashing,
             'invincible': self.invincible,
             'is_spectator': self.is_spectator
         }
