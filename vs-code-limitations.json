@@ -1,0 +1,206 @@
+{
+  "vs_code_limitations": {
+    "title": "MMO Pacman Development Constraints",
+    "description": "Known limitations when developing and running the MMO Pacman server within VS Code",
+    "issues": [
+      {
+        "issue": "VS Code Terminal Hanging",
+        "description": "Running the Flask-SocketIO server directly in VS Code's integrated terminal causes the IDE to become unresponsive or crash",
+        "symptoms": [
+          "VS Code becomes unresponsive when running server",
+          "Terminal stops accepting input",
+          "IDE requires force-close and restart",
+          "Background processes may continue running"
+        ],
+        "root_cause": "Conflict between Flask-SocketIO's threading model and VS Code's integrated terminal/debugger",
+        "affected_commands": [
+          "python app.py",
+          "C:/git/mmo-pacman/.venv/Scripts/python.exe app.py",
+          ".\\run.bat (when run in VS Code terminal)"
+        ]
+      }
+    ],
+    "workarounds": [
+      {
+        "method": "External Terminal",
+        "description": "Run the server in a separate terminal window outside of VS Code",
+        "steps": [
+          "Open Windows Command Prompt or PowerShell (external)",
+          "Navigate to project directory: cd c:\\git\\mmo-pacman",
+          "Run the batch file: .\\run.bat",
+          "Keep VS Code open for code editing only"
+        ],
+        "advantages": [
+          "No VS Code crashes",
+          "Clean server output",
+          "Can easily stop/restart server",
+          "Maintains VS Code stability for editing"
+        ],
+        "testing_workflow": [
+          "Edit code in VS Code",
+          "Save files",
+          "Stop server in external terminal (Ctrl+C)",
+          "Restart server: .\\run.bat",
+          "Test in browser: http://localhost:5000"
+        ]
+      },
+      {
+        "method": "VS Code Tasks (Alternative)",
+        "description": "Use VS Code tasks with external terminal flag",
+        "note": "May still cause issues, external terminal preferred",
+        "configuration": {
+          "tasks.json": {
+            "version": "2.0.0",
+            "tasks": [
+              {
+                "label": "Run MMO Pacman Server",
+                "type": "shell",
+                "command": ".\\run.bat",
+                "group": "build",
+                "presentation": {
+                  "echo": true,
+                  "reveal": "always",
+                  "focus": false,
+                  "panel": "new",
+                  "showReuseMessage": true,
+                  "clear": false
+                },
+                "options": {
+                  "cwd": "${workspaceFolder}"
+                },
+                "runOptions": {
+                  "runOn": "folderOpen"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "development_setup": {
+      "recommended_approach": "Dual Window Setup",
+      "windows": [
+        {
+          "window": "VS Code",
+          "purpose": "Code editing and file management",
+          "activities": [
+            "Edit Python files (app.py, game/*.py)",
+            "Edit HTML/CSS/JS (templates/, static/)",
+            "View file structure",
+            "Git operations",
+            "Code debugging (static analysis only)"
+          ]
+        },
+        {
+          "window": "External Terminal",
+          "purpose": "Server execution and monitoring",
+          "activities": [
+            "Run server: .\\run.bat",
+            "Monitor server logs",
+            "Stop/restart server",
+            "View real-time debug output"
+          ]
+        },
+        {
+          "window": "Web Browser",
+          "purpose": "Game testing",
+          "url": "http://localhost:5000",
+          "activities": [
+            "Test gameplay",
+            "Multiple tabs for multi-player testing",
+            "Developer tools for client-side debugging"
+          ]
+        }
+      ]
+    },
+    "debugging_strategy": {
+      "server_side": {
+        "method": "Log-based debugging",
+        "log_location": "logs/mmo_pacman_server_YYYYMMDD_HHMMSS.log",
+        "log_viewing": {
+          "quick_access": "Use view_logs.bat or text editor",
+          "latest_log": "AI assistant can read the latest log file directly from logs/ folder for debugging",
+          "log_analysis": "Assistant should check logs/ directory and read the most recent timestamped log file to diagnose issues"
+        },
+        "debug_levels": [
+          "Console output in external terminal",
+          "File logs with timestamps",
+          "Custom debug print statements"
+        ]
+      },
+      "client_side": {
+        "method": "Browser developer tools",
+        "tools": [
+          "Console for JavaScript debugging",
+          "Network tab for SocketIO messages",
+          "Elements for DOM inspection"
+        ]
+      }
+    },
+    "common_patterns": {
+      "development_cycle": [
+        "1. Edit code in VS Code",
+        "2. Save all changes",
+        "3. Switch to external terminal",
+        "4. Stop server (Ctrl+C)",
+        "5. Restart server (.\\run.bat)",
+        "6. Test in browser",
+        "7. Check logs if issues occur (AI can read latest log from logs/ folder)",
+        "8. Report issues with log snippets or ask AI to analyze logs directly",
+        "9. Repeat"
+      ],
+      "testing_multiplayer": [
+        "Open multiple browser tabs/windows",
+        "Each tab represents a different player",
+        "Test interactions between players",
+        "Monitor server logs for collision detection"
+      ]
+    },
+    "file_structure": {
+      "batch_files": {
+        "run.bat": "Main server startup script",
+        "view_logs.bat": "Quick log file viewer"
+      },
+      "python_files": {
+        "app.py": "Flask server with SocketIO handlers",
+        "game/game_state.py": "Core game logic and collision detection",
+        "game/player.py": "Player class with invincibility system",
+        "game/ghost.py": "Ghost AI and movement"
+      },
+      "client_files": {
+        "static/js/game.js": "Client-side game engine",
+        "templates/index.html": "Game interface"
+      }
+    },
+    "troubleshooting": {
+      "if_vs_code_hangs": [
+        "Force close VS Code (Task Manager if needed)",
+        "Check for python.exe processes still running",
+        "Kill any remaining server processes",
+        "Restart VS Code",
+        "Use external terminal for server going forward"
+      ],
+      "if_port_in_use": [
+        "Check for existing server processes: netstat -ano | findstr :5000",
+        "Kill process if needed: taskkill /PID <process_id> /F",
+        "Restart server in external terminal"
+      ],
+      "debugging_workflow": [
+        "Run server in external terminal",
+        "Reproduce the issue in browser",
+        "Ask AI assistant to read latest log file from logs/ folder",
+        "AI will analyze server logs and identify root cause",
+        "Implement fix based on log analysis",
+        "Test again and verify fix"
+      ]
+    },
+    "metadata": {
+      "created": "2025-10-31",
+      "last_updated": "2025-10-31",
+      "project": "MMO Pacman",
+      "environment": "Windows with VS Code",
+      "python_version": "3.13.7",
+      "flask_socketio_version": "Latest"
+    }
+  }
+}

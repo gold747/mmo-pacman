@@ -1,0 +1,7 @@
+when the ghost touches me all the ghosts stop moving
+
+also different players should start in different location on the map
+
+the map needs to be much bigger to support 30 players
+
+the ghosts should appears 10 seconds after all players have joined the lobby and the host clicked start

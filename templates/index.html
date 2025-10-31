@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MMO Pacman - 30 Players Online</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <div class="header-content">
+                <h1>🎮 MMO Pacman</h1>
+                <div class="game-stats">
+                    <div class="stat">
+                        <span class="stat-label">Score:</span>
+                        <span id="score">0</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Lives:</span>
+                        <span id="lives">3</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Players:</span>
+                        <span id="player-count">0</span>/30
+                    </div>
+                    <div class="stat power-indicator" id="power-indicator" style="display: none;">
+                        <span>⚡ POWER MODE!</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Login Screen -->
+            <div id="login-screen" class="screen">
+                <div class="login-container">
+                    <h2>Join the Game</h2>
+                    <div class="input-group">
+                        <label for="player-name">Enter your name:</label>
+                        <input type="text" id="player-name" placeholder="Player Name" maxlength="20">
+                    </div>
+                    <button id="join-btn" class="btn">Join Game</button>
+                    <div id="join-status"></div>
+                </div>
+            </div>
+
+            <!-- Game Screen -->
+            <div id="game-screen" class="screen" style="display: none;">
+                <div class="game-area">
+                    <canvas id="game-canvas" width="800" height="600"></canvas>
+                    <div class="game-controls">
+                        <div class="control-info">
+                            <h3>Controls:</h3>
+                            <p>Use WASD or Arrow Keys to move</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Player List -->
+                <div class="sidebar">
+                    <div class="players-panel">
+                        <h3>Players Online</h3>
+                        <div id="players-list"></div>
+                    </div>
+                    
+                    <div class="leaderboard">
+                        <h3>Leaderboard</h3>
+                        <div id="leaderboard-list"></div>
+                    </div>
+
+                    <div class="game-info">
+                        <h3>Game Info</h3>
+                        <div class="info-item">
+                            <strong>Pellets:</strong> 10 points each
+                        </div>
+                        <div class="info-item">
+                            <strong>Power Pellets:</strong> 50 points + temporary ghost immunity
+                        </div>
+                        <div class="info-item">
+                            <strong>Eating Ghosts:</strong> 200 points each (during power mode)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Over Screen -->
+            <div id="game-over-screen" class="screen" style="display: none;">
+                <div class="game-over-container">
+                    <h2>Game Over!</h2>
+                    <div id="final-score"></div>
+                    <button id="restart-btn" class="btn">Play Again</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Connection Status -->
+        <div id="connection-status" class="connection-status">
+            <span id="connection-text">Connecting...</span>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+</body>
+</html>

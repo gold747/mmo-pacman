@@ -1,0 +1,202 @@
+{
+  "project_implementation_decisions": {
+    "title": "MMO Pacman Design and Implementation Decisions",
+    "description": "Comprehensive documentation of all major design decisions, technical constraints, and implementation approaches for the MMO Pacman project",
+    
+    "vs_code_limitations": {
+      "title": "Development Environment Constraints",
+      "decision": "Use external terminal for server execution",
+      "rationale": "Flask-SocketIO server causes VS Code IDE to hang/crash when run in integrated terminal",
+      "implementation": {
+        "approach": "Dual-window development setup",
+        "vs_code_usage": "Code editing, file management, git operations only",
+        "server_execution": "External PowerShell/Command Prompt using run.bat",
+        "browser_testing": "http://localhost:5000 with multiple tabs for multiplayer testing"
+      },
+      "debugging_strategy": {
+        "server_logs": "File-based logging to logs/mmo_pacman_server_YYYYMMDD_HHMMSS.log",
+        "client_debugging": "Browser developer tools",
+        "ai_assistance": "AI can read latest log files directly from logs/ folder for analysis"
+      }
+    },
+
+    "logging_system": {
+      "title": "Centralized File-Based Logging",
+      "decision": "All debug messages go to log files, not terminal output",
+      "rationale": "Enable post-mortem analysis and avoid terminal clutter during development",
+      "implementation": {
+        "debug_messages": "All print() statements replaced with logger.debug()",
+        "log_location": "logs/mmo_pacman_server_YYYYMMDD_HHMMSS.log",
+        "log_levels": "DEBUG for collision detection, INFO for player actions, ERROR for exceptions",
+        "console_output": "Minimal - only essential server startup messages"
+      },
+      "benefits": [
+        "Detailed collision detection debugging preserved in files",
+        "Historical analysis of game events",
+        "AI assistant can analyze logs for troubleshooting",
+        "Clean terminal output in external window"
+      ]
+    },
+
+    "mmo_game_architecture": {
+      "title": "Session-Based MMO Design (Option 2)",
+      "decision": "Implement session-based rounds with spectator mode instead of continuous respawn",
+      "rationale": "Balances MMO scalability with classic Pacman gameplay mechanics",
+      "rejected_options": [
+        {
+          "option": "Option 1 - Continuous Respawn MMO",
+          "reason": "Removes classic Pacman 'lives' concept and tension of death consequences"
+        },
+        {
+          "option": "Option 3 - Hybrid System", 
+          "reason": "Too complex for initial implementation, can be added later"
+        }
+      ],
+      "implementation": {
+        "player_death": "Players become spectators when lives reach 0",
+        "spectator_mode": "Continue watching game, invisible to other players",
+        "round_system": "5-minute rounds or until all pellets collected/all players dead", 
+        "round_transitions": "10-second break between rounds, all spectators revived",
+        "seamless_joining": "New players can join active rounds immediately",
+        "session_persistence": "Game state continues across rounds, players can leave/rejoin"
+      }
+    },
+
+    "collision_detection": {
+      "title": "Invincibility-Based Collision System",
+      "decision": "30-tick invincibility period after ghost collision",
+      "rationale": "Prevents collision spam while allowing fair gameplay",
+      "implementation": {
+        "collision_range": "20px radius for ghost-player overlap detection",
+        "invincibility_duration": "30 ticks (3 seconds at 10 FPS game loop)",
+        "visual_feedback": "Player flashing during invincibility period",
+        "power_mode": "Players can eat ghosts when powered, ghosts flee",
+        "respawn_system": "Immediate respawn at available spawn point after collision"
+      },
+      "debugging": {
+        "extensive_logging": "Every collision event logged with positions and timers",
+        "state_tracking": "Before/after states logged for each collision",
+        "invincibility_monitoring": "Timer countdown logged every 10 ticks"
+      }
+    },
+
+    "multiplayer_scalability": {
+      "title": "30-Player MMO Architecture",
+      "target_capacity": "30 simultaneous players",
+      "current_implementation": {
+        "connection_handling": "Flask-SocketIO with WebSocket connections",
+        "game_state": "Centralized server-side state management",
+        "update_frequency": "10 FPS game loop with 100ms tick rate",
+        "spawn_system": "Distributed spawn points across 40x30 tile map"
+      },
+      "future_optimizations": [
+        "Spatial partitioning for collision detection",
+        "Delta compression for player updates", 
+        "Load balancing for multiple game instances",
+        "Database persistence for player profiles"
+      ]
+    },
+
+    "technical_stack": {
+      "backend": {
+        "framework": "Flask with Flask-SocketIO",
+        "real_time": "WebSocket communication",
+        "game_loop": "Background task with 100ms intervals",
+        "logging": "Python logging module with file rotation"
+      },
+      "frontend": {
+        "rendering": "HTML5 Canvas with 2D context",
+        "networking": "Socket.IO JavaScript client",
+        "game_engine": "Custom JavaScript game loop",
+        "ui_framework": "Vanilla HTML/CSS/JavaScript"
+      },
+      "infrastructure": {
+        "platform": "Windows development, cross-platform deployment",
+        "python_version": "3.13.7",
+        "package_management": "pip with virtual environment",
+        "version_control": "Git with comprehensive documentation"
+      }
+    },
+
+    "game_mechanics": {
+      "map_design": {
+        "size": "40x30 tiles (800x600 pixels)",
+        "tile_size": "20x20 pixels",
+        "layout": "Classic Pacman maze with MMO adaptations",
+        "spawn_points": "Multiple distributed locations for 30 players"
+      },
+      "player_progression": {
+        "scoring": "Points for pellets (10) and power pellets (50)",
+        "power_mode": "Temporary ghost-eating ability from power pellets",
+        "lives_system": "3 lives per round, spectator mode when depleted",
+        "leaderboard": "Score-based ranking across all players"
+      },
+      "ghost_ai": {
+        "movement": "Simple random movement with wall collision",
+        "behavior": "Chase players normally, flee during power mode",
+        "respawn": "Ghosts respawn after being eaten by powered players",
+        "collision": "Damage players unless player is powered or invincible"
+      }
+    },
+
+    "development_workflow": {
+      "code_editing": "VS Code for all source code modifications",
+      "server_testing": "External terminal with run.bat for server execution",
+      "multiplayer_testing": "Multiple browser tabs simulating different players",
+      "debugging_cycle": [
+        "Edit code in VS Code",
+        "Save changes", 
+        "Restart server in external terminal",
+        "Test in browser",
+        "Check log files for issues",
+        "Use AI assistant to analyze logs if needed"
+      ]
+    },
+
+    "quality_assurance": {
+      "testing_strategy": {
+        "collision_testing": "Extensive logging of all collision events",
+        "multiplayer_testing": "Multiple browser sessions",
+        "performance_testing": "Monitor server logs for timing issues",
+        "edge_case_testing": "Player disconnections, rapid movements, simultaneous actions"
+      },
+      "monitoring": {
+        "server_health": "Log analysis for error patterns",
+        "game_balance": "Score distribution and round duration analysis", 
+        "user_experience": "Connection stability and latency monitoring"
+      }
+    },
+
+    "future_enhancements": {
+      "planned_features": [
+        "Player authentication and persistent profiles",
+        "Multiple game rooms/lobbies",
+        "Customizable game settings (round duration, lives, etc.)",
+        "Enhanced ghost AI with pathfinding",
+        "Power-up system beyond basic pellets",
+        "Tournament and ranking systems"
+      ],
+      "technical_improvements": [
+        "Performance optimizations for larger player counts",
+        "Mobile-responsive UI design",
+        "Reconnection handling and state recovery",
+        "Anti-cheat mechanisms",
+        "Server clustering for horizontal scaling"
+      ]
+    },
+
+    "metadata": {
+      "created": "2025-10-31",
+      "last_updated": "2025-10-31", 
+      "project": "MMO Pacman",
+      "version": "1.0.0",
+      "environment": "Windows Development, Cross-Platform Target",
+      "decision_log": [
+        "2025-10-31: Initial architecture decisions",
+        "2025-10-31: VS Code limitations documented",
+        "2025-10-31: Logging system centralized to files",
+        "2025-10-31: Session-based MMO design selected (Option 2)"
+      ]
+    }
+  }
+}

@@ -1,0 +1,259 @@
+from flask import Flask, render_template, request
+from flask_socketio import SocketIO, emit, join_room, leave_room
+import json
+import time
+import threading
+import logging
+import sys
+import os
+from datetime import datetime
+from game.game_state import GameState
+from game.player import Player
+from game.ghost import Ghost
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'mmo_pacman_secret_key_2024'
+
+# Setup logging with timestamp in logs folder
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+logs_folder = "logs"
+os.makedirs(logs_folder, exist_ok=True)  # Create logs folder if it doesn't exist
+log_filename = os.path.join(logs_folder, f"mmo_pacman_server_{timestamp}.log")
+
+# Configure logging with file-only for detailed logs, minimal console output
+file_handler = logging.FileHandler(log_filename)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.WARNING)  # Only show warnings and errors in console
+console_handler.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.DEBUG,
+    handlers=[file_handler, console_handler]
+)
+
+# Suppress SocketIO's verbose logging to console
+# Suppress SocketIO console logging completely
+logging.getLogger('socketio').setLevel(logging.ERROR)
+logging.getLogger('engineio').setLevel(logging.ERROR)
+
+# Create app logger with selective console output
+logger = logging.getLogger(__name__)
+
+# Add a console handler specifically for important server messages
+server_console = logging.StreamHandler(sys.stdout)
+server_console.setLevel(logging.INFO)
+server_console.setFormatter(logging.Formatter('[SERVER] %(message)s'))
+logger.addHandler(server_console)
+logger.setLevel(logging.DEBUG)
+
+print(f"[STARTUP] Server logs: {log_filename}")
+
+# Configure SocketIO with logging disabled for console
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=False, engineio_logger=False)
+
+# Global game state
+game_state = GameState()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@socketio.on('connect')
+def on_connect():
+    logger.info(f'🔌 Client {request.sid} connected')
+    
+@socketio.on('disconnect')
+def on_disconnect():
+    logger.info(f'[DISCONNECT] Client {request.sid} disconnected')
+    # Remove player from game
+    if request.sid in game_state.players:
+        game_state.remove_player(request.sid)
+        emit('player_disconnected', {'player_id': request.sid}, broadcast=True)
+
+@socketio.on('join_game')
+def on_join_game(data):
+    logger.info(f'[JOIN] Received join_game event from {request.sid} with data: {data}')
+    player_name = data.get('name', f'Player_{request.sid[:8]}')
+    logger.info(f'[PLAYER] Player name: {player_name}')
+    
+    # Create new player
+    player = Player(request.sid, player_name)
+    logger.info(f'[CREATE] Created player: {player.id} with lives: {player.lives}')
+    
+    # Add player to game state
+    success, spawn_pos = game_state.add_player(player)
+    logger.info(f'[SPAWN] Add player result - Success: {success}, Spawn pos: {spawn_pos}')
+    
+    if success:
+        player.x, player.y = spawn_pos
+        logger.info(f'[POSITION] Player positioned at: {player.x}, {player.y}')
+        
+        # Send game state to new player
+        game_data = {
+            'player_id': request.sid,
+            'spawn_position': {'x': player.x, 'y': player.y},
+            'map_data': game_state.map_data,
+            'players': game_state.get_players_data(),
+            'ghosts': game_state.get_ghosts_data(),
+            'pellets': list(game_state.pellets),
+            'power_pellets': list(game_state.power_pellets)
+        }
+        logger.info(f'[GAMEDATA] Sending game_joined event with pellets: {len(game_data["pellets"])}, power_pellets: {len(game_data["power_pellets"])}')
+        emit('game_joined', game_data)
+        
+        # Notify other players
+        emit('player_joined', {
+            'player_id': request.sid,
+            'name': player_name,
+            'position': {'x': player.x, 'y': player.y},
+            'score': player.score
+        }, broadcast=True, include_self=False)
+        logger.info(f'✅ Player {player_name} successfully joined the game')
+    else:
+        logger.warning(f'[ERROR] Failed to add player - game full or no spawn points')
+        emit('game_full', {'message': 'Game is full. Maximum 30 players allowed.'})
+
+@socketio.on('player_move')
+def on_player_move(data):
+    if request.sid in game_state.players:
+        direction = data.get('direction')
+        player = game_state.players[request.sid]
+        
+        # Process movement and collision detection
+        old_x, old_y = player.x, player.y
+        moved = game_state.move_player(request.sid, direction)
+        
+        if moved:
+            # Check for pellet collection
+            pellet_collected = game_state.check_pellet_collision(request.sid)
+            power_pellet_collected = game_state.check_power_pellet_collision(request.sid)
+            
+            # Broadcast player movement
+            # Broadcast player movement to everyone (including sender)
+            emit('player_moved', {
+                'player_id': request.sid,
+                'position': {'x': player.x, 'y': player.y},
+                'direction': direction
+            }, broadcast=True)
+            
+            # Handle pellet collection
+            if pellet_collected:
+                logger.info(f'🔵 Player {request.sid} collected pellet at ({int(player.x // 20)}, {int(player.y // 20)}), score: {player.score}')
+                emit('pellet_collected', {
+                    'player_id': request.sid,
+                    'pellet_pos': {'x': int(player.x // 20), 'y': int(player.y // 20)},
+                    'score': player.score
+                }, broadcast=True)
+            
+            # Handle power pellet collection
+            if power_pellet_collected:
+                logger.info(f'🟡 Player {request.sid} collected POWER PELLET at ({int(player.x // 20)}, {int(player.y // 20)}), score: {player.score}, power_mode: {player.power_mode}, power_timer: {player.power_timer}')
+                emit('power_pellet_collected', {
+                    'player_id': request.sid,
+                    'pellet_pos': {'x': int(player.x // 20), 'y': int(player.y // 20)},
+                    'score': player.score,
+                    'power_mode': player.power_mode,
+                    'power_timer': player.power_timer
+                }, broadcast=True)
+
+def game_loop():
+    """Main game loop that runs continuously"""
+    with app.app_context():
+        first_round_started = False
+        ghost_update_counter = 0  # For reducing ghost update log frequency
+            
+        while True:
+            try:
+                # Start first round when first player joins
+                if not first_round_started and len(game_state.players) > 0:
+                    game_state.start_new_round()
+                    first_round_started = True
+                    logger.info(f"[ROUND_START] First round started with {len(game_state.players)} players")
+                
+                # Check round status
+                round_end = game_state.check_round_end()
+                if round_end:
+                    logger.info(f"[ROUND_END] {round_end['message']}")
+                    socketio.emit('round_ended', {
+                        'reason': round_end['type'],
+                        'message': round_end['message'],
+                        'round_status': game_state.get_round_status()
+                    }, namespace='/')
+                    
+                    # Wait 10 seconds then start new round if players remain
+                    socketio.sleep(10)
+                    if len(game_state.players) > 0:
+                        game_state.start_new_round()
+                        socketio.emit('round_started', {
+                            'message': 'New round started!',
+                            'round_status': game_state.get_round_status(),
+                            'players': game_state.get_players_data()
+                        }, namespace='/')
+                
+                # Update ghosts
+                game_state.update_ghosts()
+                
+                # Check ghost collisions with players
+                collisions = game_state.check_ghost_collisions()
+                
+                if collisions:
+                    for collision in collisions:
+                        if collision['type'] == 'ghost_eaten':
+                            logger.info(f"[GHOST_EATEN] Player {collision['player_id']} ate ghost {collision['ghost_id']}! Score: {collision['score']}")
+                        elif collision['type'] == 'player_caught':
+                            logger.info(f"[PLAYER_CAUGHT] Ghost {collision['ghost_id']} caught player {collision['player_id']}! Lives: {collision['lives']}")
+                        elif collision['type'] == 'player_died':
+                            logger.info(f"[PLAYER_DIED] Player {collision['player_id']} died to ghost {collision['ghost_id']}! Now spectator")
+                        
+                        socketio.emit('player_caught', collision, namespace='/')
+                
+                # Check for power mode changes and broadcast
+                for player_id, player in game_state.players.items():
+                    if hasattr(player, '_last_power_mode'):
+                        if player._last_power_mode != player.power_mode:
+                            logger.info(f"[POWER] Player {player_id} power mode changed: {player.power_mode} (timer: {player.power_timer})")
+                            socketio.emit('power_mode_changed', {
+                                'player_id': player_id,
+                                'power_mode': player.power_mode,
+                                'power_timer': player.power_timer
+                            }, namespace='/')
+                    player._last_power_mode = player.power_mode
+                
+                # Broadcast ghost positions
+                if game_state.ghosts:
+                    ghost_update_counter += 1
+                    socketio.emit('ghosts_updated', {
+                        'ghosts': game_state.get_ghosts_data()
+                    }, namespace='/')
+                    # Only log ghost updates every 50 iterations (5 seconds at 10 FPS)
+                    if ghost_update_counter % 50 == 0:
+                        logger.debug(f"Ghost update #{ghost_update_counter} sent to {len(game_state.players)} players")
+            except Exception as e:
+                logger.error(f"[ERROR] Error in game loop: {e}")
+                # don't return/continue before tick() runs; we'll fall through to finally
+            finally:
+                # Always advance timers/state even if an error occurred earlier
+                try:
+                    game_state.tick()
+                except Exception as tick_err:
+                    logger.error(f"[ERROR] Error while ticking game state: {tick_err}")
+
+            # Sleep for game tick (60 FPS = ~16.67ms per frame)
+            time.sleep(0.1)  # 10 FPS for server updates
+
+if __name__ == '__main__':
+    print("[STARTUP] Starting MMO Pacman server...")
+    print("[STARTUP] Navigate to http://localhost:5000 to play")
+    
+    # Start the game loop as a Socket.IO background task to avoid blocking
+    socketio.start_background_task(game_loop)
+    print("[STARTUP] Game loop started (background task)")
+
+    # Run the server without the Werkzeug reloader (reloader can spawn multiple processes/threads
+    # and cause problems in some development environments like VS Code). Turn off debug to
+    # prevent the reloader from running; you can enable debug separately if needed.
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
