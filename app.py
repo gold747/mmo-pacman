@@ -13,7 +13,7 @@ from game.player import Player
 from game.ghost import Ghost
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'mmo_pacman_secret_key_2024'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_change_in_production')
 
 # Setup logging with timestamp in logs folder
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
