@@ -1061,7 +1061,10 @@ class GameState:
         # First player becomes the host
         if not self.players:
             self.host_player_id = player.id
+            player.is_host = True
             self.logger.info(f"Player {player.id} is now the host")
+        else:
+            player.is_host = False
         
         # Find available spawn point
         spawn_pos = self.get_available_spawn_point()
@@ -1085,9 +1088,15 @@ class GameState:
         if player_id in self.players:
             # If host leaves, assign new host
             if player_id == self.host_player_id:
+                # Clear host flag from leaving player
+                if player_id in self.players:
+                    self.players[player_id].is_host = False
+                
                 remaining_players = [pid for pid in self.players.keys() if pid != player_id]
                 self.host_player_id = remaining_players[0] if remaining_players else None
                 if self.host_player_id:
+                    # Set host flag for new host
+                    self.players[self.host_player_id].is_host = True
                     self.logger.info(f"Player {self.host_player_id} is now the new host")
             
             del self.players[player_id]

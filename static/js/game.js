@@ -293,7 +293,7 @@ class MMOPacmanGame {
         this.socket.on('game_restarted', (data) => {
             console.log('Game restarted by host:', data.message);
             this.hideRoundEndLeaderboard();
-            this.showJoinStatus(data.message, true);
+            // Don't show "Starting..." message since game_started will be sent immediately
         });
 
         // Lobby-related handlers
@@ -313,6 +313,7 @@ class MMOPacmanGame {
         this.socket.on('game_started', (data) => {
             console.log('Game started:', data);
             this.gameState = 'playing';
+            this.hideRoundEndLeaderboard(); // Hide any overlay from round end
             this.initializeGameFromData(data);
             this.showGameScreen();
         });

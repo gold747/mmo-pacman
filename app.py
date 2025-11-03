@@ -234,9 +234,24 @@ def handle_restart_game():
             # Reset game state for new round
             game_state.restart_round()
             
-            socketio.emit('game_restarted', {
-                'message': 'Host started a new round!'
-            }, namespace='/')
+            # Actually start the game immediately
+            success, message = game_state.start_game(player_id)
+            
+            if success:
+                # Notify all players that the new round has started
+                socketio.emit('game_started', {
+                    'message': 'New round started by host!',
+                    'players': game_state.get_players_data(),
+                    'ghosts': game_state.get_ghosts_data(),
+                    'map_data': game_state.map_data,
+                    'pellets': list(game_state.pellets),
+                    'power_pellets': list(game_state.power_pellets)
+                }, namespace='/')
+                
+                logger.info(f"[RESTART] New round started successfully")
+            else:
+                logger.error(f"[RESTART] Failed to start new round: {message}")
+                socketio.emit('error', {'message': f'Failed to start new round: {message}'}, namespace='/')
             
         else:
             logger.warning(f"[RESTART] Non-host player {player_id} tried to restart game")
