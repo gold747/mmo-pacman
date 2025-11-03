@@ -341,14 +341,13 @@ class MMOPacmanGame {
             
             // Immediately hide overlays
             this.hideRoundEndLeaderboard();
-            this.hideLoadingMessage();
             
             this.initializeGameFromData(data);
             this.showGameScreen();
             
             // Aggressively remove any remaining overlays multiple times
             const removeOverlays = () => {
-                const allOverlays = document.querySelectorAll('.round-end-overlay, .loading-overlay, #loading-overlay, #round-end-overlay');
+                const allOverlays = document.querySelectorAll('.round-end-overlay, #round-end-overlay');
                 allOverlays.forEach(overlay => {
                     console.log('Force removing overlay:', overlay.id || overlay.className);
                     overlay.remove();
@@ -1100,9 +1099,6 @@ class MMOPacmanGame {
                 
                 // Send restart request to server
                 this.socket.emit('restart_game');
-                
-                // Show a simple loading message instead of keeping the overlay
-                this.showLoadingMessage('Starting new round...');
             });
         }
     }
@@ -1152,19 +1148,39 @@ class MMOPacmanGame {
     }
 
     hideLoadingMessage() {
-        console.log('Hiding loading message...');
+        console.log('Hiding loading message - aggressive cleanup...');
+        
+        // First try to hide by setting display none
         const loadingOverlay = document.getElementById('loading-overlay');
         if (loadingOverlay) {
-            console.log('Loading overlay found, removing...');
-            loadingOverlay.remove();
+            console.log('Found loading overlay, hiding and removing...');
+            loadingOverlay.style.display = 'none';
+            loadingOverlay.style.visibility = 'hidden';
+            setTimeout(() => loadingOverlay.remove(), 10);
         }
         
-        // Also remove any loading overlays that might exist
-        const allLoadingOverlays = document.querySelectorAll('.loading-overlay');
-        allLoadingOverlays.forEach(overlay => {
-            console.log('Removing additional loading overlay');
-            overlay.remove();
+        // Remove all possible loading overlays
+        const selectors = ['.loading-overlay', '#loading-overlay', '[class*="loading"]', '[id*="loading"]'];
+        selectors.forEach(selector => {
+            const overlays = document.querySelectorAll(selector);
+            overlays.forEach(overlay => {
+                console.log(`Removing overlay found by selector ${selector}:`, overlay);
+                overlay.style.display = 'none';
+                overlay.remove();
+            });
         });
+        
+        // Remove any overlay containing "Starting" text anywhere in the document
+        const allDivs = document.querySelectorAll('div');
+        allDivs.forEach(div => {
+            if (div.textContent && div.textContent.includes('Starting')) {
+                console.log('Removing div with Starting text:', div);
+                div.style.display = 'none';
+                div.remove();
+            }
+        });
+        
+        console.log('Loading message cleanup complete');
     }
 
     showGameOver() {
