@@ -270,7 +270,8 @@ def on_start_game():
             'ghosts': game_state.get_ghosts_data(),
             'map_data': game_state.map_data,
             'pellets': list(game_state.pellets),
-            'power_pellets': list(game_state.power_pellets)
+            'power_pellets': list(game_state.power_pellets),
+            'round_status': game_state.get_round_status()
         }, namespace='/')
         logger.info(f"Game started by host {request.sid}")
     else:
@@ -307,7 +308,8 @@ def handle_restart_game():
                     'ghosts': game_state.get_ghosts_data(),
                     'map_data': game_state.map_data,
                     'pellets': list(game_state.pellets),
-                    'power_pellets': list(game_state.power_pellets)
+                    'power_pellets': list(game_state.power_pellets),
+                    'round_status': game_state.get_round_status()
                 }, namespace='/')
                 
                 logger.info(f"[RESTART] New round started successfully")

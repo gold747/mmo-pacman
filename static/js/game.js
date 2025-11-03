@@ -33,7 +33,7 @@ class MMOPacmanGame {
         
         // Round timer
         this.roundTimer = 0;
-        this.roundDuration = 10; // seconds
+        this.roundDuration = 120; // seconds (2 minutes)
         this.timerInterval = null;
         
         // Restart state tracking
