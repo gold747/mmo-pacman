@@ -341,6 +341,7 @@ def game_loop():
                 round_end = game_state.check_round_end()
                 if round_end:
                     logger.info(f"[ROUND_END] {round_end['message']}")
+                    logger.info(f"[DEBUG] Round end type: {round_end['type']}, Total players: {len(game_state.players)}, Active players: {len([p for p in game_state.players.values() if not getattr(p, 'is_spectator', False)])}")
                     
                     # Always show leaderboard when round ends
                     leaderboard_data = game_state.get_leaderboard()
@@ -360,7 +361,7 @@ def game_loop():
                     }, namespace='/')
                     
                     # Check if we should end the game (no players left)
-                    if round_end['type'] == 'no_players' or (round_end['type'] == 'all_dead' and len(game_state.players) == 0):
+                    if round_end['type'] == 'no_players':
                         logger.info("[GAME_END] All players gone, ending game")
                         # Don't restart - wait for new players or host action
                         socketio.sleep(30)  # Show leaderboard for 30 seconds

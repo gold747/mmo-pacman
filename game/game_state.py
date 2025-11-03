@@ -14,7 +14,7 @@ class GameState:
         # Game state properties
         self.game_state = 'lobby'  # 'lobby', 'playing', 'round_end'
         self.host_player_id = None  # First player to join becomes host
-        self.round_duration = 300  # 5 minutes per round (in seconds)
+        self.round_duration = 10  # 10 seconds per round for testing (was 300)
         self.round_start_time = 0
         self.round_active = False
         self.waiting_for_restart = False
