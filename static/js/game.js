@@ -863,29 +863,58 @@ class MMOPacmanGame {
     renderPerformanceStats() {
         const padding = 10;
         const lineHeight = 16;
+        const textPadding = 8;
         let y = padding;
         
-        // Background
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        this.ctx.fillRect(padding, y, 200, 60);
+        // Prepare text content
+        const fpsText = `FPS: ${this.fps}`;
+        const playersText = `Players: ${Object.keys(this.players).length}`;
+        const ghostsText = `Ghosts: ${this.ghosts.length}`;
+        const hintText = 'Press P to toggle';
         
-        // Text
+        // Calculate text widths to determine background size
+        this.ctx.font = '12px monospace';
+        const textWidth = Math.max(
+            this.ctx.measureText(fpsText).width,
+            this.ctx.measureText(playersText).width,
+            this.ctx.measureText(ghostsText).width,
+            this.ctx.measureText(hintText).width
+        );
+        
+        const boxWidth = textWidth + (textPadding * 2);
+        const boxHeight = 70;
+        
+        // Background with rounded corners
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        this.ctx.fillRect(padding, y, boxWidth, boxHeight);
+        
+        // Border
+        this.ctx.strokeStyle = 'rgba(255, 215, 0, 0.5)';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(padding, y, boxWidth, boxHeight);
+        
+        // Main stats text
         this.ctx.fillStyle = '#00ff00';
         this.ctx.font = '12px monospace';
+        this.ctx.textAlign = 'left';
+        
+        y += lineHeight + 2;
+        this.ctx.fillText(fpsText, padding + textPadding, y);
         
         y += lineHeight;
-        this.ctx.fillText(`FPS: ${this.fps}`, padding + 5, y);
+        this.ctx.fillText(playersText, padding + textPadding, y);
         
         y += lineHeight;
-        this.ctx.fillText(`Players: ${Object.keys(this.players).length}`, padding + 5, y);
-        
-        y += lineHeight;
-        this.ctx.fillText(`Ghosts: ${this.ghosts.length}`, padding + 5, y);
+        this.ctx.fillText(ghostsText, padding + textPadding, y);
         
         // Toggle hint
         this.ctx.fillStyle = '#888888';
         this.ctx.font = '10px monospace';
-        this.ctx.fillText('Press P to toggle', padding + 5, padding + 55);
+        y += lineHeight + 2;
+        this.ctx.fillText(hintText, padding + textPadding, y);
+        
+        // Reset text alignment
+        this.ctx.textAlign = 'start';
     }
     
     startRoundTimer(duration) {
