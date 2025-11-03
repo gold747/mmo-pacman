@@ -345,6 +345,21 @@ class MMOPacmanGame {
 
         this.socket.on('lobby_updated', (data) => {
             console.log('Lobby updated:', data);
+            
+            // Reset client game state to lobby
+            this.gameState = 'lobby';
+            this.gameOverShown = false;
+            this.restartInProgress = false;
+            
+            // Stop round timer if running
+            this.stopRoundTimer();
+            
+            // Hide any overlays
+            this.hideRoundEndLeaderboard();
+            
+            // Show lobby screen
+            this.showLobbyScreen();
+            
             this.updateLobbyDisplay(data);
         });
 

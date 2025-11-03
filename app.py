@@ -292,30 +292,40 @@ def handle_restart_game():
         # Verify this player is the host
         if player_id == game_state.host_player_id:
             logger.info(f"[RESTART] Host {player_id} restarting game")
+            
+            # First, reset game to lobby state
+            game_state.game_state = 'lobby'
+            game_state.round_active = False
             game_state.waiting_for_restart = False
             
-            # Reset game state for new round
-            game_state.restart_round()
-            
-            # Actually start the game immediately
-            success, message = game_state.start_game(player_id)
-            
-            if success:
-                # Notify all players that the new round has started
-                socketio.emit('game_started', {
-                    'message': 'New round started by host!',
-                    'players': game_state.get_players_data(),
-                    'ghosts': game_state.get_ghosts_data(),
-                    'map_data': game_state.map_data,
-                    'pellets': list(game_state.pellets),
-                    'power_pellets': list(game_state.power_pellets),
-                    'round_status': game_state.get_round_status()
-                }, namespace='/')
+            # Reset all players to active (not spectator)
+            for player in game_state.players.values():
+                player.is_spectator = False
+                player.lives = 3
+                player.score = 0
+                player.power_mode = False
+                player.power_timer = 0
+                player.invincible = False
+                player.invincibility_timer = 0
+                player.death_time = 0
                 
-                logger.info(f"[RESTART] New round started successfully")
-            else:
-                logger.error(f"[RESTART] Failed to start new round: {message}")
-                socketio.emit('error', {'message': f'Failed to start new round: {message}'}, namespace='/')
+                # Reset position
+                spawn_pos = game_state.get_available_spawn_point()
+                player.x, player.y = spawn_pos
+            
+            # Reset pellets and ghosts
+            game_state.spawn_pellets()
+            game_state.ghosts.clear()
+            game_state.spawn_ghosts()
+            
+            # Send lobby update to all players
+            socketio.emit('lobby_updated', {
+                'players': game_state.get_players_data(),
+                'host_id': game_state.host_player_id,
+                'game_state': game_state.game_state
+            }, namespace='/')
+            
+            logger.info(f"[RESTART] Game reset to lobby state successfully")
             
         else:
             logger.warning(f"[RESTART] Non-host player {player_id} tried to restart game")
