@@ -30,3 +30,17 @@ node_modules/
 
 # Virtual environment
 .env
+
+# AWS/SSH Keys
+*.pem
+*.key
+*.ppk
+
+# AWS credentials
+.aws/
+aws-credentials.json
+
+# AWS deployment scripts (contain sensitive info)
+launch-ec2.ps1
+launch-ec2.sh
+aws-setup.sh
