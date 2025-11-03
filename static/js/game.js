@@ -24,6 +24,16 @@ class MMOPacmanGame {
         this.lastMoveTime = 0;
         this.moveDelay = 150; // milliseconds
         
+        // Performance monitoring
+        this.frameCount = 0;
+        this.lastFrameTime = performance.now();
+        this.frameTimes = [];
+        this.fps = 0;
+        this.showPerformanceStats = true;
+        
+        // Restart state tracking
+        this.restartInProgress = false;
+        
         // UI elements
         this.loginScreen = document.getElementById('login-screen');
         this.lobbyScreen = document.getElementById('lobby-screen');
@@ -270,7 +280,10 @@ class MMOPacmanGame {
         
         this.socket.on('round_ended', (data) => {
             console.log(`Round ended: ${data.message}`);
-            this.showRoundEndLeaderboard(data.message, data.leaderboard, data.host_id);
+            // Don't show round end leaderboard if restart is in progress
+            if (!this.restartInProgress) {
+                this.showRoundEndLeaderboard(data.message, data.leaderboard, data.host_id);
+            }
         });
         
         this.socket.on('round_started', (data) => {
@@ -298,8 +311,12 @@ class MMOPacmanGame {
 
         this.socket.on('game_restarted', (data) => {
             console.log('Game restarted by host:', data.message);
+            // Immediately hide the overlay when restart is initiated
             this.hideRoundEndLeaderboard();
-            // Don't show "Starting..." message since game_started will be sent immediately
+            // Additional safety check after a delay
+            setTimeout(() => {
+                this.hideRoundEndLeaderboard();
+            }, 50);
         });
 
         // Lobby-related handlers
@@ -320,9 +337,27 @@ class MMOPacmanGame {
             console.log('Game started:', data);
             this.gameState = 'playing';
             this.gameOverShown = false; // Reset game over flag for new round
-            this.hideRoundEndLeaderboard(); // Hide any overlay from round end
+            this.restartInProgress = false; // Reset restart flag
+            
+            // Immediately hide overlays
+            this.hideRoundEndLeaderboard();
+            this.hideLoadingMessage();
+            
             this.initializeGameFromData(data);
             this.showGameScreen();
+            
+            // Aggressively remove any remaining overlays multiple times
+            const removeOverlays = () => {
+                const allOverlays = document.querySelectorAll('.round-end-overlay, .loading-overlay, #loading-overlay, #round-end-overlay');
+                allOverlays.forEach(overlay => {
+                    console.log('Force removing overlay:', overlay.id || overlay.className);
+                    overlay.remove();
+                });
+            };
+            
+            removeOverlays(); // Immediate
+            setTimeout(removeOverlays, 50);  // After 50ms
+            setTimeout(removeOverlays, 200); // After 200ms
         });
 
         this.socket.on('start_game_error', (data) => {
@@ -352,6 +387,12 @@ class MMOPacmanGame {
     }
     
     handleMovement(e) {
+        // Toggle performance stats with 'P' key
+        if (e.key === 'p' || e.key === 'P') {
+            this.showPerformanceStats = !this.showPerformanceStats;
+            return;
+        }
+        
         const now = Date.now();
         if (now - this.lastMoveTime < this.moveDelay) {
             return;
@@ -516,6 +557,12 @@ class MMOPacmanGame {
         
         // Render UI overlay
         this.renderMiniMap();
+        
+        // Update and render performance stats
+        this.updatePerformanceStats();
+        if (this.showPerformanceStats) {
+            this.renderPerformanceStats();
+        }
     }
     
     renderMap(startX, startY, endX, endY) {
@@ -776,6 +823,54 @@ class MMOPacmanGame {
         }
     }
     
+    updatePerformanceStats() {
+        const now = performance.now();
+        const deltaTime = now - this.lastFrameTime;
+        this.lastFrameTime = now;
+        
+        this.frameTimes.push(deltaTime);
+        this.frameCount++;
+        
+        // Keep only last 60 frame times
+        if (this.frameTimes.length > 60) {
+            this.frameTimes.shift();
+        }
+        
+        // Calculate FPS every 10 frames
+        if (this.frameCount % 10 === 0) {
+            const avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+            this.fps = Math.round(1000 / avgFrameTime);
+        }
+    }
+    
+    renderPerformanceStats() {
+        const padding = 10;
+        const lineHeight = 16;
+        let y = padding;
+        
+        // Background
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.fillRect(padding, y, 200, 60);
+        
+        // Text
+        this.ctx.fillStyle = '#00ff00';
+        this.ctx.font = '12px monospace';
+        
+        y += lineHeight;
+        this.ctx.fillText(`FPS: ${this.fps}`, padding + 5, y);
+        
+        y += lineHeight;
+        this.ctx.fillText(`Players: ${Object.keys(this.players).length}`, padding + 5, y);
+        
+        y += lineHeight;
+        this.ctx.fillText(`Ghosts: ${this.ghosts.length}`, padding + 5, y);
+        
+        // Toggle hint
+        this.ctx.fillStyle = '#888888';
+        this.ctx.font = '10px monospace';
+        this.ctx.fillText('Press P to toggle', padding + 5, padding + 55);
+    }
+    
     updateUI() {
         if (this.playerId && this.players[this.playerId]) {
             const player = this.players[this.playerId];
@@ -997,18 +1092,79 @@ class MMOPacmanGame {
         const playAgainBtn = document.getElementById('play-again-btn');
         if (playAgainBtn) {
             playAgainBtn.addEventListener('click', () => {
+                console.log('[DEBUG] Play again button clicked - immediately hiding overlay');
+                
+                // Set restart flag and immediately hide the overlay
+                this.restartInProgress = true;
+                this.hideRoundEndLeaderboard();
+                
+                // Send restart request to server
                 this.socket.emit('restart_game');
-                playAgainBtn.disabled = true;
-                playAgainBtn.textContent = 'Starting...';
+                
+                // Show a simple loading message instead of keeping the overlay
+                this.showLoadingMessage('Starting new round...');
             });
         }
     }
 
     hideRoundEndLeaderboard() {
-        const overlay = document.getElementById('round-end-overlay');
-        if (overlay) {
-            overlay.style.display = 'none';
+        console.log('[DEBUG] Hiding round end leaderboard');
+        
+        // Force remove all possible overlays
+        const overlays = document.querySelectorAll('#round-end-overlay, .round-end-overlay');
+        overlays.forEach(overlay => {
+            console.log('[DEBUG] Removing overlay element');
+            overlay.remove(); // Permanently remove from DOM
+        });
+        
+        // Also check for any overlay in the game screen
+        const gameScreen = document.getElementById('game-screen');
+        if (gameScreen) {
+            const childOverlays = gameScreen.querySelectorAll('.round-end-overlay, [id*="round-end"]');
+            childOverlays.forEach(overlay => {
+                overlay.remove();
+                console.log('[DEBUG] Removed child overlay from game screen');
+            });
         }
+        
+        console.log('[DEBUG] All round end overlays removed');
+    }
+
+    showLoadingMessage(message) {
+        console.log(`[DEBUG] Showing loading message: ${message}`);
+        
+        // Create a simple loading overlay
+        let loadingOverlay = document.getElementById('loading-overlay');
+        if (!loadingOverlay) {
+            loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'loading-overlay';
+            loadingOverlay.className = 'loading-overlay';
+            document.body.appendChild(loadingOverlay);
+        }
+        
+        loadingOverlay.innerHTML = `
+            <div class="loading-content">
+                <div class="loading-spinner">🎮</div>
+                <div class="loading-text">${message}</div>
+            </div>
+        `;
+        loadingOverlay.style.display = 'flex';
+    }
+
+    hideLoadingMessage() {
+        console.log('Hiding loading message...');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            console.log('Loading overlay found, removing...');
+            loadingOverlay.remove();
+        }
+        
+        // Also remove any loading overlays that might exist
+        const allLoadingOverlays = document.querySelectorAll('.loading-overlay');
+        allLoadingOverlays.forEach(overlay => {
+            console.log('Removing additional loading overlay');
+            overlay.remove();
+        });
     }
 
     showGameOver() {

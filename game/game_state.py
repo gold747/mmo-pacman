@@ -1120,7 +1120,7 @@ class GameState:
         # Make all players active (remove spectator status)
         for player in self.players.values():
             player.is_spectator = False
-            player.lives = 3
+            player.lives = 1  # Single life for testing
             player.score = 0
             player.power_mode = False
             player.power_timer = 0
@@ -1444,7 +1444,7 @@ class GameState:
         for player in self.players.values():
             if getattr(player, 'is_spectator', False):
                 player.is_spectator = False
-                player.lives = 3
+                player.lives = 1  # Single life for testing
                 player.invincible = False
                 player.invincibility_timer = 0
                 # Spawn them at a new position

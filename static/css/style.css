@@ -553,6 +553,43 @@ main {
     }
 }
 
+/* Loading Message Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 3000;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.loading-content {
+    text-align: center;
+    color: #fff;
+}
+
+.loading-spinner {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    animation: spin 2s linear infinite;
+}
+
+.loading-text {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* Round End Leaderboard Overlay */
 .round-end-overlay {
     position: fixed;

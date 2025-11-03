@@ -6,6 +6,7 @@ import threading
 import logging
 import sys
 import os
+import psutil
 from datetime import datetime
 from game.game_state import GameState
 from game.player import Player
@@ -57,6 +58,66 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logge
 
 # Global game state
 game_state = GameState()
+
+# Performance monitoring
+class PerformanceMonitor:
+    def __init__(self):
+        self.game_loop_times = []
+        self.cpu_percentages = []
+        self.memory_usage = []
+        self.player_counts = []
+        self.last_log_time = time.time()
+        self.frame_count = 0
+        
+    def record_frame_time(self, frame_time):
+        self.game_loop_times.append(frame_time)
+        self.frame_count += 1
+        
+        # Keep only last 100 measurements
+        if len(self.game_loop_times) > 100:
+            self.game_loop_times.pop(0)
+    
+    def record_system_stats(self, player_count):
+        self.cpu_percentages.append(psutil.cpu_percent())
+        self.memory_usage.append(psutil.Process().memory_info().rss / 1024 / 1024)  # MB
+        self.player_counts.append(player_count)
+        
+        # Keep only last 60 measurements (1 minute at 1 Hz)
+        if len(self.cpu_percentages) > 60:
+            self.cpu_percentages.pop(0)
+            self.memory_usage.pop(0)
+            self.player_counts.pop(0)
+    
+    def get_stats(self):
+        if not self.game_loop_times:
+            return {}
+        
+        avg_frame_time = sum(self.game_loop_times) / len(self.game_loop_times)
+        max_frame_time = max(self.game_loop_times)
+        fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+        
+        return {
+            'fps': round(fps, 1),
+            'avg_frame_time': round(avg_frame_time * 1000, 2),  # ms
+            'max_frame_time': round(max_frame_time * 1000, 2),  # ms
+            'cpu_percent': round(sum(self.cpu_percentages) / len(self.cpu_percentages), 1) if self.cpu_percentages else 0,
+            'memory_mb': round(sum(self.memory_usage) / len(self.memory_usage), 1) if self.memory_usage else 0,
+            'player_count': self.player_counts[-1] if self.player_counts else 0,
+            'total_frames': self.frame_count
+        }
+    
+    def should_log(self):
+        return time.time() - self.last_log_time >= 5.0  # Log every 5 seconds
+    
+    def log_performance(self):
+        stats = self.get_stats()
+        logger.info(f"[PERFORMANCE] FPS: {stats['fps']}, "
+                   f"Frame Time: {stats['avg_frame_time']}ms (max: {stats['max_frame_time']}ms), "
+                   f"CPU: {stats['cpu_percent']}%, Memory: {stats['memory_mb']}MB, "
+                   f"Players: {stats['player_count']}")
+        self.last_log_time = time.time()
+
+perf_monitor = PerformanceMonitor()
 
 @app.route('/')
 def index():
@@ -265,9 +326,11 @@ def game_loop():
     with app.app_context():
         first_round_started = False
         ghost_update_counter = 0  # For reducing ghost update log frequency
+        frame_start_time = time.time()
             
         while True:
             try:
+                frame_start_time = time.time()
                 # Only start round if game is in playing state (not lobby)
                 if not first_round_started and len(game_state.players) > 0 and game_state.game_state == 'playing':
                     game_state.start_new_round()
@@ -378,8 +441,22 @@ def game_loop():
                     except Exception as tick_err:
                         logger.error(f"[ERROR] Error while ticking game state: {tick_err}")
 
-            # Sleep for game tick (60 FPS = ~16.67ms per frame)
-            time.sleep(0.1)  # 10 FPS for server updates
+            # Performance monitoring
+            frame_end_time = time.time()
+            frame_time = frame_end_time - frame_start_time if 'frame_start_time' in locals() else 0.1
+            perf_monitor.record_frame_time(frame_time)
+            
+            # Record system stats less frequently (every 10 frames)
+            if perf_monitor.frame_count % 10 == 0:
+                perf_monitor.record_system_stats(len(game_state.players))
+            
+            # Log performance every 5 seconds
+            if perf_monitor.should_log():
+                perf_monitor.log_performance()
+            
+            # Sleep for game tick (10 FPS for server updates)
+            time.sleep(0.1)
+            frame_start_time = time.time()
 
 if __name__ == '__main__':
     print("[STARTUP] Starting MMO Pacman server...")
