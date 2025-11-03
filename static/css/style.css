@@ -61,6 +61,61 @@ header h1 {
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
 }
 
+.round-timer {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin: 0.5rem 0;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 20px;
+    border: 2px solid #ffd700;
+    animation: pulse-timer 1s infinite;
+}
+
+.timer-label {
+    color: #fff;
+}
+
+.timer-value {
+    color: #ffd700;
+    font-size: 1.4rem;
+    min-width: 60px;
+    text-align: center;
+}
+
+.timer-value.warning {
+    color: #ff6b6b;
+    animation: flash-warning 0.5s infinite;
+}
+
+.timer-value.critical {
+    color: #ff4444;
+    animation: flash-critical 0.3s infinite;
+}
+
+@keyframes pulse-timer {
+    0%, 100% { 
+        box-shadow: 0 0 5px rgba(255, 215, 0, 0.3);
+    }
+    50% { 
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+    }
+}
+
+@keyframes flash-warning {
+    0%, 100% { color: #ff6b6b; }
+    50% { color: #ffaa00; }
+}
+
+@keyframes flash-critical {
+    0%, 100% { color: #ff4444; }
+    50% { color: #ffffff; }
+}
+
 .game-stats {
     display: flex;
     gap: 2rem;

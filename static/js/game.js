@@ -31,6 +31,11 @@ class MMOPacmanGame {
         this.fps = 0;
         this.showPerformanceStats = true;
         
+        // Round timer
+        this.roundTimer = 0;
+        this.roundDuration = 10; // seconds
+        this.timerInterval = null;
+        
         // Restart state tracking
         this.restartInProgress = false;
         
@@ -286,6 +291,10 @@ class MMOPacmanGame {
         
         this.socket.on('round_ended', (data) => {
             console.log(`Round ended: ${data.message}`);
+            
+            // Stop round timer
+            this.stopRoundTimer();
+            
             // Don't show round end leaderboard if restart is in progress
             if (!this.restartInProgress) {
                 this.showRoundEndLeaderboard(data.message, data.leaderboard, data.host_id);
@@ -344,6 +353,9 @@ class MMOPacmanGame {
             this.gameState = 'playing';
             this.gameOverShown = false; // Reset game over flag for new round
             this.restartInProgress = false; // Reset restart flag
+            
+            // Start round timer
+            this.startRoundTimer(data.round_status?.time_remaining || this.roundDuration);
             
             // Immediately hide overlays
             this.hideRoundEndLeaderboard();
@@ -874,6 +886,51 @@ class MMOPacmanGame {
         this.ctx.fillStyle = '#888888';
         this.ctx.font = '10px monospace';
         this.ctx.fillText('Press P to toggle', padding + 5, padding + 55);
+    }
+    
+    startRoundTimer(duration) {
+        this.roundDuration = duration;
+        this.roundTimeLeft = duration;
+        
+        const timerElement = document.getElementById('round-timer');
+        timerElement.style.display = 'block';
+        timerElement.textContent = `${this.roundTimeLeft}s`;
+        timerElement.className = 'round-timer';
+        
+        this.timerInterval = setInterval(() => {
+            this.roundTimeLeft--;
+            this.updateRoundTimer();
+            
+            if (this.roundTimeLeft <= 0) {
+                this.stopRoundTimer();
+            }
+        }, 1000);
+    }
+    
+    stopRoundTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        
+        const timerElement = document.getElementById('round-timer');
+        timerElement.style.display = 'none';
+    }
+    
+    updateRoundTimer() {
+        const timerElement = document.getElementById('round-timer');
+        timerElement.textContent = `${this.roundTimeLeft}s`;
+        
+        // Update timer state classes based on time remaining
+        const percentage = this.roundTimeLeft / this.roundDuration;
+        
+        if (percentage <= 0.2) {
+            timerElement.className = 'round-timer critical';
+        } else if (percentage <= 0.4) {
+            timerElement.className = 'round-timer warning';
+        } else {
+            timerElement.className = 'round-timer';
+        }
     }
     
     updateUI() {
