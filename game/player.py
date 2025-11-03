@@ -6,7 +6,7 @@ class Player:
         self.y = 0
         self.direction = 'right'
         self.score = 0
-        self.lives = 1  # Single life for testing
+        self.lives = 3  # Normal gameplay with 3 lives
         self.power_mode = False
         self.power_timer = 0
         self.invincible = False

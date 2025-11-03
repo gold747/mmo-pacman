@@ -14,7 +14,7 @@ class GameState:
         # Game state properties
         self.game_state = 'lobby'  # 'lobby', 'playing', 'round_end'
         self.host_player_id = None  # First player to join becomes host
-        self.round_duration = 10  # 10 seconds per round for testing (was 300)
+        self.round_duration = 120  # 2 minutes per round (normal gameplay)
         self.round_start_time = 0
         self.round_active = False
         self.waiting_for_restart = False
@@ -1120,7 +1120,7 @@ class GameState:
         # Make all players active (remove spectator status)
         for player in self.players.values():
             player.is_spectator = False
-            player.lives = 1  # Single life for testing
+            player.lives = 3  # Normal gameplay with 3 lives
             player.score = 0
             player.power_mode = False
             player.power_timer = 0
@@ -1450,7 +1450,7 @@ class GameState:
         for player in self.players.values():
             if getattr(player, 'is_spectator', False):
                 player.is_spectator = False
-                player.lives = 1  # Single life for testing
+                player.lives = 3  # Normal gameplay with 3 lives
                 player.invincible = False
                 player.invincibility_timer = 0
                 # Spawn them at a new position
