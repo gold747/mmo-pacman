@@ -1,0 +1,19 @@
+# Copy and paste these commands into your EC2 terminal after SSH connection
+# Note: Use ec2-user for Amazon Linux, ubuntu for Ubuntu
+
+echo "Setting up Auto-Deploy on existing MMO Pacman instance..."
+
+# Go to the MMO Pacman directory
+cd /home/ec2-user/mmo-pacman
+
+# Pull latest changes
+git pull origin main
+
+# Update dependencies
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Download and run the auto-deploy setup script (Amazon Linux version)
+curl -o add-autodeploy-setup.sh https://raw.githubusercontent.com/gold747/mmo-pacman/main/add-autodeploy-to-existing-ec2-amazonlinux.sh
+chmod +x add-autodeploy-setup.sh
+./add-autodeploy-setup.sh
