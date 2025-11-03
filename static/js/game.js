@@ -1419,7 +1419,61 @@ class MMOPacmanGame {
     }
 }
 
+// Copy URL functionality
+function setupCopyButton() {
+    const copyBtn = document.getElementById('copy-url-btn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+            const serverSpan = document.getElementById('server-ip');
+            if (serverSpan) {
+                // Extract the server:port from the text
+                const serverText = serverSpan.textContent;
+                const serverMatch = serverText.match(/Server: (.+)/);
+                if (serverMatch) {
+                    const serverAndPort = serverMatch[1];
+                    const gameUrl = `http://${serverAndPort}`;
+                    
+                    try {
+                        await navigator.clipboard.writeText(gameUrl);
+                        
+                        // Visual feedback
+                        copyBtn.textContent = '✓';
+                        copyBtn.classList.add('copied');
+                        
+                        // Reset after 2 seconds
+                        setTimeout(() => {
+                            copyBtn.textContent = '📋';
+                            copyBtn.classList.remove('copied');
+                        }, 2000);
+                        
+                        console.log('Game URL copied to clipboard:', gameUrl);
+                    } catch (err) {
+                        console.error('Failed to copy URL:', err);
+                        
+                        // Fallback for older browsers
+                        const textArea = document.createElement('textarea');
+                        textArea.value = gameUrl;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        
+                        // Visual feedback
+                        copyBtn.textContent = '✓';
+                        copyBtn.classList.add('copied');
+                        setTimeout(() => {
+                            copyBtn.textContent = '📋';
+                            copyBtn.classList.remove('copied');
+                        }, 2000);
+                    }
+                }
+            }
+        });
+    }
+}
+
 // Initialize game when page loads
 document.addEventListener('DOMContentLoaded', () => {
     new MMOPacmanGame();
+    setupCopyButton();
 });
