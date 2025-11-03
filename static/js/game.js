@@ -351,6 +351,10 @@ class MMOPacmanGame {
             this.gameOverShown = false;
             this.restartInProgress = false;
             
+            // Update host status based on current lobby state
+            this.isHost = (this.playerId === data.host_id);
+            console.log(`Host status updated: ${this.isHost} (my ID: ${this.playerId}, host ID: ${data.host_id})`);
+            
             // Stop round timer if running
             this.stopRoundTimer();
             

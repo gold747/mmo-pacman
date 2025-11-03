@@ -319,11 +319,7 @@ def handle_restart_game():
             game_state.spawn_ghosts()
             
             # Send lobby update to all players
-            socketio.emit('lobby_updated', {
-                'players': game_state.get_players_data(),
-                'host_id': game_state.host_player_id,
-                'game_state': game_state.game_state
-            }, namespace='/')
+            socketio.emit('lobby_updated', game_state.get_lobby_state(), namespace='/')
             
             logger.info(f"[RESTART] Game reset to lobby state successfully")
             
