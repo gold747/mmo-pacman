@@ -10,6 +10,7 @@ class MMOPacmanGame {
         this.pellets = new Set();
         this.powerPellets = new Set();
         this.connected = false;
+        this.gameOverShown = false; // Flag to prevent repeated game over displays
         
         // Canvas and rendering
         this.canvas = document.getElementById('game-canvas');
@@ -215,10 +216,14 @@ class MMOPacmanGame {
         
         this.socket.on('player_caught', (data) => {
             if (data.type === 'player_died' && data.player_id === this.playerId) {
-                console.log('You died! Entering spectator mode...');
-                this.showDeathMessage('Game Over!', 'You have no lives left', () => {
-                    this.showSpectatorMode();
-                });
+                // Only show game over once per round
+                if (!this.gameOverShown) {
+                    console.log('You died! Entering spectator mode...');
+                    this.gameOverShown = true;
+                    this.showDeathMessage('Game Over!', 'You have no lives left', () => {
+                        this.showSpectatorMode();
+                    });
+                }
             } else if (data.type === 'player_caught') {
                 console.log(`Player ${data.player_id} was caught by ghost ${data.ghost_id}, lives: ${data.lives}`);
                 console.log(`DEBUG: Respawn position:`, data.respawn_pos);
@@ -313,6 +318,7 @@ class MMOPacmanGame {
         this.socket.on('game_started', (data) => {
             console.log('Game started:', data);
             this.gameState = 'playing';
+            this.gameOverShown = false; // Reset game over flag for new round
             this.hideRoundEndLeaderboard(); // Hide any overlay from round end
             this.initializeGameFromData(data);
             this.showGameScreen();
@@ -364,13 +370,51 @@ class MMOPacmanGame {
         }
         
         if (direction && this.playerId) {
-            this.socket.emit('player_move', { direction });
-            this.lastMoveTime = now;
+            const player = this.players[this.playerId];
             
-            // Update local player immediately for smooth movement
-            if (this.players[this.playerId]) {
-                this.players[this.playerId].direction = direction;
+            // Check if player is in spectator mode
+            if (player && player.is_spectator) {
+                // Move camera instead of player in spectator mode
+                this.handleSpectatorCameraMove(direction);
+                this.lastMoveTime = now;
+            } else {
+                // Normal player movement
+                this.socket.emit('player_move', { direction });
+                this.lastMoveTime = now;
+                
+                // Update local player immediately for smooth movement
+                if (this.players[this.playerId]) {
+                    this.players[this.playerId].direction = direction;
+                }
             }
+        }
+    }
+    
+    handleSpectatorCameraMove(direction) {
+        const moveSpeed = 30; // Pixels per move
+        
+        switch (direction) {
+            case 'up':
+                this.viewportY -= moveSpeed;
+                break;
+            case 'down':
+                this.viewportY += moveSpeed;
+                break;
+            case 'left':
+                this.viewportX -= moveSpeed;
+                break;
+            case 'right':
+                this.viewportX += moveSpeed;
+                break;
+        }
+        
+        // Ensure camera doesn't go outside map bounds
+        if (this.mapData && this.mapData.length > 0) {
+            const maxViewportX = (this.mapData[0].length * this.tileSize) - this.canvas.width;
+            const maxViewportY = (this.mapData.length * this.tileSize) - this.canvas.height;
+            
+            this.viewportX = Math.max(0, Math.min(maxViewportX, this.viewportX));
+            this.viewportY = Math.max(0, Math.min(maxViewportY, this.viewportY));
         }
     }
     
@@ -382,6 +426,12 @@ class MMOPacmanGame {
     updateCamera() {
         if (this.playerId && this.players[this.playerId]) {
             const player = this.players[this.playerId];
+            
+            // Don't auto-follow camera in spectator mode (manual control with arrow keys)
+            if (player.is_spectator) {
+                return;
+            }
+            
             const playerScreenX = player.position.x - this.viewportX;
             const playerScreenY = player.position.y - this.viewportY;
             
@@ -842,11 +892,12 @@ class MMOPacmanGame {
         // Show spectator message instead of game over
         this.showJoinStatus('You died! You are now spectating. Wait for next round to play again.', false);
         
-        // Continue rendering game but show spectator status
+        // Continue rendering game but show spectator status with controls info
         document.getElementById('game-status').innerHTML = `
             <div style="background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; margin: 10px;">
                 <strong>SPECTATOR MODE</strong><br>
-                Waiting for next round to start...
+                Use arrow keys to move the camera and spectate other players<br>
+                <small>Waiting for next round to start...</small>
             </div>
         `;
     }

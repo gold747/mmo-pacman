@@ -1466,7 +1466,7 @@ class GameState:
         self.waiting_for_restart = False
         
         # Regenerate pellets and power pellets
-        self.generate_pellets()
+        self.spawn_pellets()
         
         # Reset and respawn ghosts
         self.ghosts.clear()
