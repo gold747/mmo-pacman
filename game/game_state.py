@@ -17,6 +17,7 @@ class GameState:
         self.round_duration = 300  # 5 minutes per round (in seconds)
         self.round_start_time = 0
         self.round_active = False
+        self.waiting_for_restart = False
         self.max_players = 30
         
         # Extra large map dimensions (80x60 tiles, each tile is 20px) - 4x bigger than original
@@ -108,56 +109,593 @@ class GameState:
                 self.spawn_points.append((x * self.tile_size, y * self.tile_size))
     
     def _generate_symmetrical_maze(self):
-        """Generate a random, symmetrical maze with proper connectivity"""
-        # Step 1: Create base pattern in top-left quadrant
-        self._create_base_quadrant()
+        """Create 3x3 grid of Pac-Man mazes for 30 players"""
+        import json
+        import os
         
-        # Step 2: Mirror to create full symmetrical map
-        self._mirror_quadrants()
-        
-        # Step 3: Ensure connectivity and remove enclosed spaces
-        self._ensure_connectivity()
-        
-        # Step 4: Adjust wall density to be less than 30%
-        self._adjust_wall_density()
-        
-        # Step 5: Final connectivity check
-        self._final_connectivity_pass()
-    
-    def _create_base_quadrant(self):
-        """Create random maze pattern in top-left quadrant (will be mirrored)"""
-        # Work with the top-left quarter of the map
-        quad_width = self.map_width // 2
-        quad_height = self.map_height // 2
-        
-        # Start with some guaranteed paths
-        # Horizontal paths
-        for y in range(1, quad_height, 4):
-            for x in range(1, quad_width):
-                if random.random() > 0.3:  # 70% chance of path
-                    self.map_data[y][x] = 1
-        
-        # Vertical paths
-        for x in range(1, quad_width, 4):
-            for y in range(1, quad_height):
-                if random.random() > 0.3:  # 70% chance of path
-                    self.map_data[y][x] = 1
-        
-        # Add random connecting paths
-        for y in range(2, quad_height - 1, 2):
-            for x in range(2, quad_width - 1, 2):
-                if random.random() > 0.4:  # 60% chance of path
-                    self.map_data[y][x] = 1
+        try:
+            # Load the base static maze layout
+            maze_path = os.path.join(os.path.dirname(__file__), '..', 'static_maze.json')
+            with open(maze_path, 'r') as f:
+                maze_data = json.load(f)
+            
+            base_map = maze_data['data']
+            base_height = len(base_map)
+            base_width = len(base_map[0]) if base_height > 0 else 0
+            
+            # Create 3x3 grid with 1 row/column spacing between each maze
+            spacing = 1
+            self.map_height = (base_height * 3) + (spacing * 2)  # 3 mazes + 2 spacers
+            self.map_width = (base_width * 3) + (spacing * 2)   # 3 mazes + 2 spacers
+            
+            # Initialize the large map with walls
+            self.map_data = [[0 for _ in range(self.map_width)] for _ in range(self.map_height)]
+            
+            # Place the 3x3 grid of mazes
+            for grid_row in range(3):
+                for grid_col in range(3):
+                    # Calculate starting position for this maze copy
+                    start_y = grid_row * (base_height + spacing)
+                    start_x = grid_col * (base_width + spacing)
                     
-        # Ensure central corridors for connectivity
-        center_x = quad_width // 2
-        center_y = quad_height // 2
+                    # Copy the base maze to this position
+                    for y in range(base_height):
+                        for x in range(base_width):
+                            if (start_y + y < self.map_height and 
+                                start_x + x < self.map_width):
+                                self.map_data[start_y + y][start_x + x] = base_map[y][x]
+            
+            # Create connecting corridors between maze sections
+            self._create_connecting_corridors(base_width, base_height, spacing)
+            
+            print(f"Created 3x3 maze grid: {self.map_width}x{self.map_height}")
+            
+        except Exception as e:
+            print(f"Error creating 3x3 maze grid: {e}")
+            print("Falling back to procedural generation")
+            self._generate_fallback_maze()
+    
+    def _create_connecting_corridors(self, base_width, base_height, spacing):
+        """Create corridors connecting the 3x3 maze grid"""
+        # Horizontal corridors (connecting left-right) - make them wider
+        for grid_row in range(3):
+            y_center = grid_row * (base_height + spacing) + base_height // 2
+            
+            # Connect maze 0-1 and 1-2 in this row
+            for grid_col in range(2):
+                x_start = (grid_col + 1) * base_width + grid_col * spacing
+                x_end = x_start + spacing
+                
+                # Create wider horizontal corridor (3 tiles high)
+                for y_offset in range(-1, 2):
+                    corridor_y = y_center + y_offset
+                    if 0 <= corridor_y < self.map_height:
+                        for x in range(x_start, x_end):
+                            if 0 <= x < self.map_width:
+                                self.map_data[corridor_y][x] = 1  # Path
+                
+                # Ensure connection to mazes left and right
+                # Connect to maze on left
+                maze_left_x = (grid_col + 1) * base_width + grid_col * spacing - 1
+                if 0 <= maze_left_x < self.map_width:
+                    for y_offset in range(-1, 2):
+                        corridor_y = y_center + y_offset
+                        if 0 <= corridor_y < self.map_height:
+                            self.map_data[corridor_y][maze_left_x] = 1  # Path
+                
+                # Connect to maze on right
+                maze_right_x = x_end
+                if 0 <= maze_right_x < self.map_width:
+                    for y_offset in range(-1, 2):
+                        corridor_y = y_center + y_offset
+                        if 0 <= corridor_y < self.map_height:
+                            self.map_data[corridor_y][maze_right_x] = 1  # Path
         
-        # Main cross corridors
-        for x in range(1, quad_width):
-            self.map_data[center_y][x] = 1
-        for y in range(1, quad_height):
-            self.map_data[y][center_x] = 1
+        # Vertical corridors (connecting top-bottom) - make them wider and ensure connection
+        for grid_col in range(3):
+            x_center = grid_col * (base_width + spacing) + base_width // 2
+            
+            # Connect maze row 0-1 and 1-2 in this column
+            for grid_row in range(2):
+                y_start = (grid_row + 1) * base_height + grid_row * spacing
+                y_end = y_start + spacing
+                
+                # Create wider vertical corridor (3 tiles wide)
+                for x_offset in range(-1, 2):
+                    corridor_x = x_center + x_offset
+                    if 0 <= corridor_x < self.map_width:
+                        for y in range(y_start, y_end):
+                            if 0 <= y < self.map_height:
+                                self.map_data[y][corridor_x] = 1  # Path
+                
+                # Ensure connection to mazes above and below
+                # Connect to maze above
+                maze_above_y = grid_row * (base_height + spacing) + base_height - 1
+                if 0 <= maze_above_y < self.map_height:
+                    for x_offset in range(-1, 2):
+                        corridor_x = x_center + x_offset
+                        if 0 <= corridor_x < self.map_width:
+                            self.map_data[maze_above_y][corridor_x] = 1  # Path
+                
+                # Connect to maze below  
+                maze_below_y = (grid_row + 1) * (base_height + spacing)
+                if 0 <= maze_below_y < self.map_height:
+                    for x_offset in range(-1, 2):
+                        corridor_x = x_center + x_offset
+                        if 0 <= corridor_x < self.map_width:
+                            self.map_data[maze_below_y][corridor_x] = 1  # Path
+        
+        # Create warp tunnels at the edges (horizontal wrapping)
+        for grid_row in range(3):
+            warp_y = grid_row * (base_height + spacing) + base_height // 2
+            if 0 <= warp_y < self.map_height:
+                # Left edge warp entrance (clear path to edge)
+                for x in range(3):
+                    if 0 <= x < self.map_width:
+                        self.map_data[warp_y][x] = 1
+                
+                # Right edge warp entrance (clear path to edge)
+                for x in range(self.map_width - 3, self.map_width):
+                    if 0 <= x < self.map_width:
+                        self.map_data[warp_y][x] = 1
+    
+    def _scale_maze(self, scale_factor):
+        """Scale the maze to fit the target dimensions without changing map size"""
+        original_height = len(self.map_data)
+        original_width = len(self.map_data[0]) if original_height > 0 else 0
+        
+        # Create new map with same target dimensions
+        scaled_map = [[0 for _ in range(self.map_width)] for _ in range(self.map_height)]
+        
+        # Scale the maze data to fit target dimensions
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                # Map to original coordinates
+                if original_width > 0 and original_height > 0:
+                    orig_x = int(x * original_width / self.map_width)
+                    orig_y = int(y * original_height / self.map_height)
+                    
+                    # Get tile value (with bounds checking)
+                    if orig_y < original_height and orig_x < original_width:
+                        scaled_map[y][x] = self.map_data[orig_y][orig_x]
+                    else:
+                        scaled_map[y][x] = 0  # Wall for out-of-bounds areas
+                else:
+                    scaled_map[y][x] = 1  # Default to path if no original data
+        
+        self.map_data = scaled_map
+    
+    def _generate_fallback_maze(self):
+        """Fallback maze generation if JSON loading fails"""
+        # Initialize the map with proper dimensions first
+        self.map_data = [[1 for _ in range(self.map_width)] for _ in range(self.map_height)]
+        
+        # Simple maze - just outer walls and open center
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                if (x == 0 or x == self.map_width - 1 or 
+                    y == 0 or y == self.map_height - 1):
+                    self.map_data[y][x] = 0  # Wall
+                else:
+                    self.map_data[y][x] = 1  # Path
+    
+    def _create_classic_pacman_maze(self):
+        """Create a classic Pac-Man style maze like the reference image"""
+        # Initialize all tiles as walls
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                self.map_data[y][x] = 0  # Wall
+        
+        # Create the maze pattern based on classic Pac-Man design
+        self._create_outer_corridor()
+        self._create_main_horizontal_corridors()
+        self._create_main_vertical_corridors()
+        self._create_corner_areas()
+        self._create_central_area_with_ghost_house()
+        self._create_connecting_passages()
+        
+        # Mirror left half to right half for symmetry
+        self._mirror_left_to_right()
+        
+        # Add spawn points after maze creation
+        self._place_spawn_points()
+    
+    def _create_outer_corridor(self):
+        """Create the outer perimeter corridor"""
+        # Top corridor
+        for x in range(1, self.map_width - 1):
+            self.map_data[1][x] = 1
+        
+        # Bottom corridor  
+        for x in range(1, self.map_width - 1):
+            self.map_data[self.map_height - 2][x] = 1
+        
+        # Left corridor
+        for y in range(1, self.map_height - 1):
+            self.map_data[y][1] = 1
+        
+        # Right corridor
+        for y in range(1, self.map_height - 1):
+            self.map_data[y][self.map_width - 2] = 1
+    
+    def _create_main_horizontal_corridors(self):
+        """Create main horizontal corridors through the maze"""
+        # Upper horizontal corridor
+        upper_y = self.map_height // 4
+        for x in range(1, self.map_width - 1):
+            self.map_data[upper_y][x] = 1
+        
+        # Middle horizontal corridor (avoid ghost house area)
+        middle_y = self.map_height // 2
+        center_x = self.map_width // 2
+        for x in range(1, center_x - 4):
+            self.map_data[middle_y][x] = 1
+        for x in range(center_x + 5, self.map_width - 1):
+            self.map_data[middle_y][x] = 1
+        
+        # Lower horizontal corridor
+        lower_y = (self.map_height * 3) // 4
+        for x in range(1, self.map_width - 1):
+            self.map_data[lower_y][x] = 1
+    
+    def _create_main_vertical_corridors(self):
+        """Create main vertical corridors"""
+        # Left quarter vertical corridor
+        left_x = self.map_width // 4
+        for y in range(1, self.map_height - 1):
+            self.map_data[y][left_x] = 1
+        
+        # Right quarter vertical corridor (will be mirrored)
+        # Only create on left half, mirroring will handle right side
+        pass
+    
+    def _create_corner_areas(self):
+        """Create the corner rectangular areas with internal paths"""
+        # Top-left corner area
+        self._create_corner_block(3, 3, 8, 6)
+        
+        # Bottom-left corner area  
+        self._create_corner_block(3, self.map_height - 9, 8, 6)
+        
+        # Middle-left area
+        self._create_corner_block(3, self.map_height // 2 - 4, 6, 8)
+    
+    def _create_corner_block(self, start_x, start_y, width, height):
+        """Create a corner block with internal maze structure"""
+        # Create outer border of paths
+        # Top edge
+        for x in range(start_x, start_x + width):
+            if 0 <= x < self.map_width and 0 <= start_y < self.map_height:
+                self.map_data[start_y][x] = 1
+        
+        # Bottom edge
+        for x in range(start_x, start_x + width):
+            bottom_y = start_y + height - 1
+            if 0 <= x < self.map_width and 0 <= bottom_y < self.map_height:
+                self.map_data[bottom_y][x] = 1
+        
+        # Left edge
+        for y in range(start_y, start_y + height):
+            if 0 <= start_x < self.map_width and 0 <= y < self.map_height:
+                self.map_data[y][start_x] = 1
+        
+        # Right edge
+        for y in range(start_y, start_y + height):
+            right_x = start_x + width - 1
+            if 0 <= right_x < self.map_width and 0 <= y < self.map_height:
+                self.map_data[y][right_x] = 1
+        
+        # Create internal maze pattern (simple grid)
+        for y in range(start_y + 2, start_y + height - 2, 2):
+            for x in range(start_x + 2, start_x + width - 2, 2):
+                if 0 <= x < self.map_width and 0 <= y < self.map_height:
+                    self.map_data[y][x] = 1
+                    # Connect horizontally
+                    if x + 1 < start_x + width - 1:
+                        self.map_data[y][x + 1] = 1
+    
+    def _create_central_area_with_ghost_house(self):
+        """Create the central area with ghost house"""
+        center_x = self.map_width // 2
+        center_y = self.map_height // 2
+        
+        # Create ghost house (6x4)
+        house_width, house_height = 6, 4
+        house_start_x = center_x - house_width // 2
+        house_start_y = center_y - house_height // 2
+        
+        # Clear ghost house area (make it paths)
+        for y in range(house_start_y, house_start_y + house_height):
+            for x in range(house_start_x, house_start_x + house_width):
+                if 0 <= x < self.map_width and 0 <= y < self.map_height:
+                    self.map_data[y][x] = 1
+        
+        # Create entrance to ghost house (top center)
+        entrance_x = center_x
+        entrance_y = house_start_y - 1
+        if 0 <= entrance_x < self.map_width and 0 <= entrance_y < self.map_height:
+            self.map_data[entrance_y][entrance_x] = 1
+        
+        # Create path above the ghost house entrance
+        for y in range(entrance_y - 3, entrance_y):
+            if 0 <= entrance_x < self.map_width and 0 <= y < self.map_height:
+                self.map_data[y][entrance_x] = 1
+    
+    def _create_connecting_passages(self):
+        """Create passages that connect different areas"""
+        # Vertical connectors from horizontal corridors
+        quarter_y = self.map_height // 4
+        half_y = self.map_height // 2  
+        three_quarter_y = (self.map_height * 3) // 4
+        
+        # Connect areas at strategic points (only on left half)
+        connection_points = [
+            self.map_width // 6,
+            self.map_width // 3,
+            (self.map_width * 5) // 12
+        ]
+        
+        for x in connection_points:
+            if x < self.map_width // 2:  # Only left half
+                # Connect upper and middle
+                for y in range(quarter_y + 1, half_y):
+                    if 0 <= x < self.map_width and 0 <= y < self.map_height:
+                        self.map_data[y][x] = 1
+                
+                # Connect middle and lower  
+                for y in range(half_y + 1, three_quarter_y):
+                    if 0 <= x < self.map_width and 0 <= y < self.map_height:
+                        self.map_data[y][x] = 1
+    
+    def _mirror_left_to_right(self):
+        """Mirror the left half to the right half for symmetry"""
+        for y in range(self.map_height):
+            for x in range(self.map_width // 2):
+                mirror_x = self.map_width - 1 - x
+                self.map_data[y][mirror_x] = self.map_data[y][x]
+    
+    def _place_spawn_points(self):
+        """Place spawn points in corners and strategic locations"""
+        self.spawn_points = []
+        
+        # Corner spawn points
+        spawn_locations = [
+            (2, 2),  # Top-left
+            (2, self.map_height - 3),  # Bottom-left
+            (self.map_width - 3, 2),  # Top-right
+            (self.map_width - 3, self.map_height - 3),  # Bottom-right
+        ]
+        
+        # Add more spawn points along corridors
+        quarter_y = self.map_height // 4
+        three_quarter_y = (self.map_height * 3) // 4
+        
+        additional_spawns = [
+            (self.map_width // 6, quarter_y),
+            (self.map_width // 3, quarter_y),
+            (self.map_width * 2 // 3, quarter_y),
+            (self.map_width * 5 // 6, quarter_y),
+            (self.map_width // 6, three_quarter_y),
+            (self.map_width // 3, three_quarter_y),
+            (self.map_width * 2 // 3, three_quarter_y),
+            (self.map_width * 5 // 6, three_quarter_y),
+        ]
+        
+        all_spawn_locations = spawn_locations + additional_spawns
+        
+        # Validate and add spawn points
+        for spawn_x, spawn_y in all_spawn_locations:
+            if (0 <= spawn_x < self.map_width and 
+                0 <= spawn_y < self.map_height and
+                self.map_data[spawn_y][spawn_x] == 1):  # Must be on a path
+                
+                self.map_data[spawn_y][spawn_x] = 2  # Mark as spawn point
+                self.spawn_points.append((spawn_x * self.tile_size, spawn_y * self.tile_size))
+    
+    def _create_all_paths(self):
+        """Start with all tiles as paths, then selectively add walls"""
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                self.map_data[y][x] = 1  # All paths initially
+    
+    def _create_outer_walls(self):
+        """Create outer border walls"""
+        # Top and bottom walls
+        for x in range(self.map_width):
+            self.map_data[0][x] = 0  # Top wall
+            self.map_data[self.map_height - 1][x] = 0  # Bottom wall
+        
+        # Left and right walls (except tunnel areas)
+        for y in range(self.map_height):
+            self.map_data[y][0] = 0  # Left wall
+            self.map_data[y][self.map_width - 1] = 0  # Right wall
+    
+    def _create_ghost_house(self):
+        """Create central ghost house (accessible to ghosts)"""
+        center_x = self.map_width // 2
+        center_y = self.map_height // 2
+        
+        # Create ghost house area (6x4 box in center)
+        house_width = 6
+        house_height = 4
+        
+        start_x = center_x - house_width // 2
+        start_y = center_y - house_height // 2
+        
+        # Clear area for ghost house (use regular paths, not special tiles)
+        for y in range(start_y, start_y + house_height):
+            for x in range(start_x, start_x + house_width):
+                if 0 <= y < self.map_height and 0 <= x < self.map_width:
+                    self.map_data[y][x] = 1  # Regular path, not special tile
+        
+        # Create walls around ghost house (but with multiple entrances)
+        for y in range(start_y - 1, start_y + house_height + 1):
+            for x in range(start_x - 1, start_x + house_width + 1):
+                if 0 <= y < self.map_height and 0 <= x < self.map_width:
+                    if (y == start_y - 1 or y == start_y + house_height or 
+                        x == start_x - 1 or x == start_x + house_width):
+                        self.map_data[y][x] = 0  # Wall
+        
+        # Create multiple entrances to ghost house so ghosts don't get trapped
+        # Top entrance
+        entrance_x = center_x
+        entrance_y = start_y - 1
+        if 0 <= entrance_y < self.map_height and 0 <= entrance_x < self.map_width:
+            self.map_data[entrance_y][entrance_x] = 1  # Path
+            
+        # Left entrance
+        entrance_x = start_x - 1
+        entrance_y = center_y
+        if 0 <= entrance_y < self.map_height and 0 <= entrance_x < self.map_width:
+            self.map_data[entrance_y][entrance_x] = 1  # Path
+            
+        # Right entrance  
+        entrance_x = start_x + house_width
+        entrance_y = center_y
+        if 0 <= entrance_y < self.map_height and 0 <= entrance_x < self.map_width:
+            self.map_data[entrance_y][entrance_x] = 1  # Path
+    
+    def _create_main_corridors(self):
+        """Create main corridor structure with guaranteed connectivity"""
+        # Create main horizontal corridor through center (avoiding ghost house)
+        center_y = self.map_height // 2
+        for x in range(1, self.map_width - 1):
+            # Skip ghost house area but ensure paths around it
+            center_x = self.map_width // 2
+            if not (center_x - 4 <= x <= center_x + 4):
+                self.map_data[center_y][x] = 1
+        
+        # Create paths around ghost house
+        ghost_center_x = self.map_width // 2
+        ghost_center_y = self.map_height // 2
+        
+        # Horizontal paths above and below ghost house
+        for x in range(ghost_center_x - 5, ghost_center_x + 6):
+            if 0 <= x < self.map_width:
+                self.map_data[ghost_center_y - 4][x] = 1  # Above ghost house
+                self.map_data[ghost_center_y + 4][x] = 1  # Below ghost house
+        
+        # Vertical paths left and right of ghost house
+        for y in range(ghost_center_y - 4, ghost_center_y + 5):
+            if 0 <= y < self.map_height:
+                self.map_data[y][ghost_center_x - 5] = 1  # Left of ghost house
+                self.map_data[y][ghost_center_x + 5] = 1  # Right of ghost house
+        
+        # Create additional strategic corridors
+        corridor_y_positions = [8, 22, 38, 52]  # Evenly spaced horizontal corridors
+        
+        for y in corridor_y_positions:
+            if y < self.map_height:
+                for x in range(1, self.map_width - 1):
+                    # Always create paths but skip ghost house interior
+                    if not (ghost_center_x - 3 <= x <= ghost_center_x + 3 and ghost_center_y - 2 <= y <= ghost_center_y + 2):
+                        self.map_data[y][x] = 1
+        
+        # Create main vertical corridors
+        corridor_x_positions = [6, 15, 25, self.map_width - 26, self.map_width - 16, self.map_width - 7]
+        
+        for x in corridor_x_positions:
+            if 0 <= x < self.map_width:
+                for y in range(1, self.map_height - 1):
+                    # Skip ghost house interior only
+                    if not (ghost_center_x - 3 <= x <= ghost_center_x + 3 and ghost_center_y - 2 <= y <= ghost_center_y + 2):
+                        self.map_data[y][x] = 1
+    
+    def _add_strategic_walls(self):
+        """Add strategic walls that create interesting gameplay without isolating areas"""
+        ghost_center_x = self.map_width // 2
+        ghost_center_y = self.map_height // 2
+        
+        # Add small wall segments that create bottlenecks but maintain connectivity
+        # Only work on left half (will be mirrored)
+        
+        # Create some single-wall bottlenecks in corridors
+        bottleneck_positions = [
+            (5, 10), (8, 16), (12, 8), (15, 20),   # Upper area
+            (6, 35), (10, 42), (18, 38), (22, 45)  # Lower area  
+        ]
+        
+        for x, y in bottleneck_positions:
+            if (x < self.map_width // 2 and 0 <= y < self.map_height):
+                # Only place wall if it doesn't create isolated areas
+                if self._is_safe_wall_placement(x, y):
+                    self.map_data[y][x] = 0
+        
+        # Add small L-shaped wall formations for complexity
+        l_shapes = [
+            [(7, 6), (8, 6), (8, 7)],           # Small L in upper area
+            [(14, 12), (14, 13), (15, 13)],     # Small L in upper-middle  
+            [(9, 28), (10, 28), (10, 29)],      # Small L avoiding ghost house
+            [(20, 40), (21, 40), (21, 41)]      # Small L in lower area
+        ]
+        
+        for l_shape in l_shapes:
+            # Check if entire L-shape can be placed safely
+            safe_to_place = True
+            for x, y in l_shape:
+                if (x >= self.map_width // 2 or y >= self.map_height or 
+                    not self._is_safe_wall_placement(x, y)):
+                    safe_to_place = False
+                    break
+            
+            # Place the entire L-shape if safe
+            if safe_to_place:
+                for x, y in l_shape:
+                    self.map_data[y][x] = 0
+    
+    def _is_safe_wall_placement(self, wall_x, wall_y):
+        """Check if placing a wall here would create isolated areas"""
+        # Temporarily place the wall
+        original = self.map_data[wall_y][wall_x]
+        self.map_data[wall_y][wall_x] = 0
+        
+        # Count connected components around this wall
+        connected_areas = []
+        checked_positions = set()
+        
+        # Check each adjacent walkable position
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            adj_x, adj_y = wall_x + dx, wall_y + dy
+            if (0 <= adj_x < self.map_width and 0 <= adj_y < self.map_height):
+                if (self.map_data[adj_y][adj_x] == 1 and (adj_x, adj_y) not in checked_positions):
+                    # Flood fill from this position
+                    area = set()
+                    self._flood_fill(adj_x, adj_y, area)
+                    if area:
+                        connected_areas.append(area)
+                        checked_positions.update(area)
+        
+        # Restore original state
+        self.map_data[wall_y][wall_x] = original
+        
+        # Safe to place wall if all adjacent areas are still connected (1 or 0 components)
+        return len(connected_areas) <= 1
+    
+    def _create_tunnels(self):
+        """Create horizontal tunnels (warp zones) on left and right edges"""
+        # Create tunnel at middle height
+        tunnel_y = self.map_height // 2
+        
+        # Clear tunnel paths
+        self.map_data[tunnel_y][0] = 1  # Left tunnel entrance
+        self.map_data[tunnel_y][1] = 1  # Path from left
+        self.map_data[tunnel_y][self.map_width - 1] = 1  # Right tunnel entrance
+        self.map_data[tunnel_y][self.map_width - 2] = 1  # Path from right
+        
+        # Ensure connection to main maze
+        for x in range(2, 6):  # Left side connection
+            self.map_data[tunnel_y][x] = 1
+        for x in range(self.map_width - 6, self.map_width - 2):  # Right side connection  
+            self.map_data[tunnel_y][x] = 1
+    
+    def _mirror_for_symmetry(self):
+        """Mirror left half to right half for left-right symmetry"""
+        mid_x = self.map_width // 2
+        
+        for y in range(self.map_height):
+            for x in range(mid_x):
+                mirror_x = self.map_width - 1 - x
+                self.map_data[y][mirror_x] = self.map_data[y][x]
     
     def _mirror_quadrants(self):
         """Mirror the top-left quadrant to create full symmetrical map"""
@@ -177,47 +715,126 @@ class GameState:
                 self.map_data[mirror_y][x] = self.map_data[y][x]
     
     def _ensure_connectivity(self):
-        """Ensure all areas are connected using flood fill"""
-        # Find the first walkable cell
-        start_x, start_y = None, None
-        for y in range(1, self.map_height - 1):
-            for x in range(1, self.map_width - 1):
-                if self.map_data[y][x] == 1:
-                    start_x, start_y = x, y
-                    break
-            if start_x is not None:
-                break
+        """Ensure all areas are connected and remove enclosed spaces"""
+        # Multiple passes to ensure complete connectivity
+        for iteration in range(5):  # Up to 5 iterations to fix connectivity
+            # Find the largest connected component
+            largest_area = self._find_largest_connected_area()
+            if not largest_area:
+                self._create_emergency_paths()
+                continue
+            
+            # Find all isolated areas and connect them
+            isolated_areas = self._find_isolated_areas(largest_area)
+            
+            if not isolated_areas:
+                break  # All areas are connected
+            
+            # Connect each isolated area to the main area
+            for area in isolated_areas:
+                if area:  # Make sure area is not empty
+                    start_x, start_y = next(iter(area))  # Get first point from area
+                    self._connect_to_main_area(start_x, start_y, largest_area)
+                    # Update largest area to include newly connected area
+                    largest_area.update(area)
         
-        if start_x is None:
-            # No paths exist, create basic cross pattern
-            self._create_emergency_paths()
-            return
-        
-        # Flood fill to find connected areas
-        visited = set()
-        self._flood_fill(start_x, start_y, visited)
-        
-        # Find unconnected walkable areas and connect them
-        for y in range(1, self.map_height - 1):
-            for x in range(1, self.map_width - 1):
-                if self.map_data[y][x] == 1 and (x, y) not in visited:
-                    # Found unconnected area, create path to main area
-                    self._connect_to_main_area(x, y, visited)
+        # Additional pass to break up any remaining wall clusters
+        self._break_wall_clusters()
     
-    def _flood_fill(self, x, y, visited):
-        """Flood fill algorithm to find connected areas"""
-        if (x, y) in visited or x < 0 or x >= self.map_width or y < 0 or y >= self.map_height:
-            return
-        if self.map_data[y][x] != 1:  # Not a walkable path
-            return
+    def _find_largest_connected_area(self):
+        """Find the largest connected area of walkable tiles"""
+        all_walkable = set()
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                if self.map_data[y][x] == 1:
+                    all_walkable.add((x, y))
         
-        visited.add((x, y))
+        if not all_walkable:
+            return set()
         
-        # Check 4 directions
-        self._flood_fill(x + 1, y, visited)
-        self._flood_fill(x - 1, y, visited)
-        self._flood_fill(x, y + 1, visited)
-        self._flood_fill(x, y - 1, visited)
+        largest_area = set()
+        
+        while all_walkable:
+            # Start flood fill from an unvisited walkable tile
+            start_x, start_y = next(iter(all_walkable))
+            current_area = set()
+            self._flood_fill(start_x, start_y, current_area)
+            
+            # Remove visited tiles from remaining tiles
+            all_walkable -= current_area
+            
+            # Update largest area if current is bigger
+            if len(current_area) > len(largest_area):
+                largest_area = current_area
+        
+        return largest_area
+    
+    def _find_isolated_areas(self, main_area):
+        """Find all areas isolated from the main connected area"""
+        all_walkable = set()
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                if self.map_data[y][x] == 1:
+                    all_walkable.add((x, y))
+        
+        # Remove main area tiles
+        remaining_tiles = all_walkable - main_area
+        isolated_areas = []
+        
+        while remaining_tiles:
+            # Start new isolated area
+            start_x, start_y = next(iter(remaining_tiles))
+            area = set()
+            self._flood_fill(start_x, start_y, area)
+            
+            if area:  # Only add non-empty areas
+                isolated_areas.append(area)
+                remaining_tiles -= area
+        
+        return isolated_areas
+    
+    def _break_wall_clusters(self):
+        """Break up large clusters of walls to improve connectivity"""
+        for y in range(2, self.map_height - 2, 3):
+            for x in range(2, self.map_width - 2, 3):
+                # Check if we have a large wall cluster
+                wall_count = 0
+                for dy in range(-1, 2):
+                    for dx in range(-1, 2):
+                        if self.map_data[y + dy][x + dx] == 0:
+                            wall_count += 1
+                
+                # If mostly walls, create a path through the center
+                if wall_count >= 7:  # 7 out of 9 tiles are walls
+                    # Skip ghost house area
+                    center_x = self.map_width // 2
+                    center_y = self.map_height // 2
+                    if not (center_x - 4 <= x <= center_x + 4 and center_y - 3 <= y <= center_y + 3):
+                        self.map_data[y][x] = 1  # Create path
+    
+    def _flood_fill(self, start_x, start_y, visited):
+        """Iterative flood fill algorithm to find connected areas (avoids recursion depth issues)"""
+        stack = [(start_x, start_y)]
+        
+        while stack:
+            x, y = stack.pop()
+            
+            # Skip if already visited or out of bounds
+            if (x, y) in visited or x < 0 or x >= self.map_width or y < 0 or y >= self.map_height:
+                continue
+            
+            # Skip if not a walkable path
+            if self.map_data[y][x] != 1:
+                continue
+            
+            # Mark as visited
+            visited.add((x, y))
+            
+            # Add neighboring cells to stack
+            stack.append((x + 1, y))
+            stack.append((x - 1, y))
+            stack.append((x, y + 1))
+            stack.append((x, y - 1))
     
     def _connect_to_main_area(self, start_x, start_y, main_area):
         """Connect an isolated area to the main connected area"""
@@ -302,29 +919,54 @@ class GameState:
 
     
     def spawn_pellets(self):
-        """Spawn pellets on all walkable tiles"""
+        """Spawn pellets following Pac-Man design principles"""
         self.pellets = set()
         self.power_pellets = set()
         
-        # Regular pellets on all path tiles
+        # Regular pellets on all walkable path tiles
         for y in range(self.map_height):
             for x in range(self.map_width):
                 if self.map_data[y][x] == 1:  # Path tile
                     self.pellets.add((x, y))
         
-        # Power pellets at strategic locations
-        power_pellet_positions = [
-            (2, 2), (37, 2), (2, 27), (37, 27),  # Corners
-            (19, 7), (19, 22),  # Center vertical
-            (7, 14), (32, 14)  # Center horizontal
+        # Strategic power pellet placement (4 energizers in corners + extras for large map)
+        corner_power_pellets = [
+            (3, 3),                                    # Top-left corner
+            (self.map_width - 4, 3),                  # Top-right corner  
+            (3, self.map_height - 4),                 # Bottom-left corner
+            (self.map_width - 4, self.map_height - 4) # Bottom-right corner
         ]
         
-        for x, y in power_pellet_positions:
-            if 0 <= x < self.map_width and 0 <= y < self.map_height:
-                if self.map_data[y][x] == 1:
-                    self.power_pellets.add((x, y))
-                    # Remove regular pellet if it exists
-                    self.pellets.discard((x, y))
+        # Additional strategic power pellets for larger map
+        extra_power_pellets = [
+            (self.map_width // 4, self.map_height // 3),     # Upper-left strategic
+            (3 * self.map_width // 4, self.map_height // 3), # Upper-right strategic
+            (self.map_width // 4, 2 * self.map_height // 3), # Lower-left strategic  
+            (3 * self.map_width // 4, 2 * self.map_height // 3), # Lower-right strategic
+        ]
+        
+        all_power_positions = corner_power_pellets + extra_power_pellets
+        
+        for x, y in all_power_positions:
+            if (0 <= x < self.map_width and 0 <= y < self.map_height):
+                # Find nearest walkable position if exact position isn't walkable
+                best_pos = self._find_nearest_walkable(x, y, radius=3)
+                if best_pos:
+                    px, py = best_pos
+                    self.power_pellets.add((px, py))
+                    # Remove regular pellet at power pellet location
+                    self.pellets.discard((px, py))
+    
+    def _find_nearest_walkable(self, target_x, target_y, radius=2):
+        """Find nearest walkable position within radius"""
+        for r in range(radius + 1):
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    x, y = target_x + dx, target_y + dy
+                    if (0 <= x < self.map_width and 0 <= y < self.map_height):
+                        if self.map_data[y][x] == 1:  # Walkable
+                            return (x, y)
+        return None
     
     def spawn_ghosts(self):
         """Initial spawn of ghosts - minimum 20"""
@@ -473,13 +1115,16 @@ class GameState:
             player.score = 0
             player.power_mode = False
             player.power_timer = 0
-            player.invincible = False
-            player.invincibility_timer = 0
+            
+            # Grant 10 seconds of invincibility on game start
+            player.invincible = True
+            player.invincibility_timer = 100  # 10 seconds at 10 FPS
             
             # Respawn all players
             spawn_pos = self.get_available_spawn_point()
             if spawn_pos:
                 player.x, player.y = spawn_pos
+                self.logger.info(f"Player {player.id} spawned at {spawn_pos} with 10s invincibility")
         
         self.logger.info(f"Game started by host {player_id} with {len(self.players)} players")
         return True, "Game started!"
@@ -533,7 +1178,31 @@ class GameState:
         else:
             return False
         
-        # Check bounds and collision
+        # Check for warp tunnels first (horizontal wrapping)
+        if new_x < 0:  # Moving left off the map
+            # Warp to right side
+            new_x = (self.map_width - 1) * self.tile_size
+            tile_x = new_x // self.tile_size
+            tile_y = new_y // self.tile_size
+            if (0 <= tile_y < self.map_height and 
+                self.map_data[tile_y][tile_x] != 0):  # Not a wall
+                player.x = new_x
+                player.y = new_y
+                player.direction = direction
+                return True
+        elif new_x >= self.map_width * self.tile_size:  # Moving right off the map
+            # Warp to left side
+            new_x = 0
+            tile_x = new_x // self.tile_size
+            tile_y = new_y // self.tile_size
+            if (0 <= tile_y < self.map_height and 
+                self.map_data[tile_y][tile_x] != 0):  # Not a wall
+                player.x = new_x
+                player.y = new_y
+                player.direction = direction
+                return True
+        
+        # Check normal bounds and collision
         tile_x = new_x // self.tile_size
         tile_y = new_y // self.tile_size
         
@@ -585,8 +1254,36 @@ class GameState:
     
     def update_ghosts(self):
         """Update ghost positions and AI"""
-        for ghost in self.ghosts:
-            ghost.update(self.map_data, self.map_width, self.map_height, self.tile_size, self.players)
+        # Get positions of invincible players
+        invincible_positions = set()
+        for player in self.players.values():
+            if player.invincible:
+                player_tile_x = player.x // self.tile_size
+                player_tile_y = player.y // self.tile_size
+                invincible_positions.add((player_tile_x, player_tile_y))
+        
+        # Update ghosts sequentially to ensure real-time collision avoidance
+        ghosts_to_respawn = []
+        for i, ghost in enumerate(self.ghosts):
+            # Get current positions of all other ghosts (including those that have already moved this frame)
+            other_ghost_positions = set()
+            for j, other_ghost in enumerate(self.ghosts):
+                if j != i:  # Exclude current ghost
+                    other_tile_x = other_ghost.x // self.tile_size
+                    other_tile_y = other_ghost.y // self.tile_size
+                    other_ghost_positions.add((other_tile_x, other_tile_y))
+            
+            update_result = ghost.update(self.map_data, self.map_width, self.map_height, self.tile_size, self.players, invincible_positions, other_ghost_positions)
+            
+            # Check if ghost needs to be respawned due to being stuck
+            if update_result == 'respawn_needed':
+                ghosts_to_respawn.append(ghost)
+        
+        # Respawn stuck ghosts at new locations
+        for ghost in ghosts_to_respawn:
+            new_x, new_y = self.get_ghost_spawn_position()
+            ghost.respawn_at_position(new_x, new_y)
+            print(f"Respawned stuck ghost {ghost.id} at position ({new_x//self.tile_size}, {new_y//self.tile_size})")
     
     def check_ghost_collisions(self):
         """Check for collisions between ghosts and players"""
@@ -652,13 +1349,18 @@ class GameState:
                             old_pos = (player.x, player.y)
                             spawn_pos = self.get_available_spawn_point()
                             player.x, player.y = spawn_pos
-                            self.logger.debug(f"Player {player_id} RESPAWNED from {old_pos} to {spawn_pos}")
+                            # Grant 10 seconds of invincibility after respawn
+                            player.invincible = True
+                            player.invincibility_timer = 100  # 10 seconds at 10 FPS
+                            self.logger.debug(f"Player {player_id} RESPAWNED from {old_pos} to {spawn_pos} with 10s invincibility")
                             collisions.append({
                                 'type': 'player_caught',
                                 'player_id': player_id,
                                 'ghost_id': ghost.id,
                                 'lives': player.lives,
-                                'respawn_pos': {'x': player.x, 'y': player.y}
+                                'respawn_pos': {'x': player.x, 'y': player.y},
+                                'invincible': True,
+                                'invincibility_timer': player.invincibility_timer
                             })
                         self.logger.debug(f"Ghost {ghost.id} caught player {player_id}! Lives remaining: {player.lives}, invincible: {player.invincible}")
                     else:
@@ -749,6 +1451,32 @@ class GameState:
         self.logger.info(f"New round started! Duration: {self.round_duration} seconds")
         return True
     
+    def restart_round(self):
+        """Restart the current round (reset positions, pellets, etc.)"""
+        # Reset waiting flag
+        self.waiting_for_restart = False
+        
+        # Regenerate pellets and power pellets
+        self.generate_pellets()
+        
+        # Reset and respawn ghosts
+        self.ghosts.clear()
+        self.spawn_ghosts()
+        
+        # Reset all players to spawn points
+        for player in self.players.values():
+            spawn_pos = self.get_available_spawn_point()
+            player.x = spawn_pos[0]
+            player.y = spawn_pos[1]
+            player.power_mode = False
+            player.power_timer = 0
+            player.invincible = True
+            player.invincible_timer = 10.0
+            player.death_timer = 0
+        
+        # Start new round
+        self.start_new_round()
+    
     def check_round_end(self):
         """Check if round should end and return end reason"""
         import time
@@ -829,3 +1557,120 @@ class GameState:
         # Sort by score (highest first)
         leaderboard.sort(key=lambda x: x['score'], reverse=True)
         return leaderboard
+    
+    def _validate_map(self):
+        """Validate the generated map against all criteria"""
+        import json
+        
+        # Create JSON representation of the map
+        map_json = {
+            'width': self.map_width,
+            'height': self.map_height,
+            'data': self.map_data,
+            'validation': {}
+        }
+        
+        # Test 1: Check symmetry (left-right and top-bottom)
+        is_lr_symmetric = self._check_left_right_symmetry()
+        is_tb_symmetric = self._check_top_bottom_symmetry()
+        
+        # Test 2: Check wall density (<30%)
+        wall_count = sum(row.count(0) for row in self.map_data)
+        total_tiles = self.map_width * self.map_height
+        wall_percentage = (wall_count / total_tiles) * 100
+        
+        # Test 3: Check for enclosed areas (all paths should be connected)
+        has_no_enclosed_areas = self._check_no_enclosed_areas()
+        
+        # Test 4: Check minimum connectivity (all walkable areas connected)
+        all_connected = self._check_full_connectivity()
+        
+        # Store validation results
+        map_json['validation'] = {
+            'left_right_symmetric': is_lr_symmetric,
+            'top_bottom_symmetric': is_tb_symmetric,
+            'wall_percentage': round(wall_percentage, 2),
+            'wall_percentage_valid': wall_percentage < 30,
+            'no_enclosed_areas': has_no_enclosed_areas,
+            'all_connected': all_connected,
+            'overall_valid': (is_lr_symmetric and is_tb_symmetric and 
+                            wall_percentage < 30 and has_no_enclosed_areas and all_connected)
+        }
+        
+        # Save JSON for debugging
+        try:
+            with open('map_validation.json', 'w') as f:
+                json.dump(map_json, f, indent=2)
+        except Exception as e:
+            print(f"Could not save validation JSON: {e}")
+        
+        # Print validation results
+        print(f"Validation Results:")
+        print(f"  Left-Right Symmetric: {is_lr_symmetric}")
+        print(f"  Top-Bottom Symmetric: {is_tb_symmetric}")
+        print(f"  Wall Percentage: {wall_percentage:.1f}% (target: <30%)")
+        print(f"  No Enclosed Areas: {has_no_enclosed_areas}")
+        print(f"  All Connected: {all_connected}")
+        print(f"  Overall Valid: {map_json['validation']['overall_valid']}")
+        
+        return map_json['validation']['overall_valid']
+    
+    def _check_left_right_symmetry(self):
+        """Check if map is symmetric left-right"""
+        for y in range(self.map_height):
+            for x in range(self.map_width // 2):
+                mirror_x = self.map_width - 1 - x
+                if self.map_data[y][x] != self.map_data[y][mirror_x]:
+                    return False
+        return True
+    
+    def _check_top_bottom_symmetry(self):
+        """Check if map is symmetric top-bottom"""
+        for y in range(self.map_height // 2):
+            for x in range(self.map_width):
+                mirror_y = self.map_height - 1 - y
+                if self.map_data[y][x] != self.map_data[mirror_y][x]:
+                    return False
+        return True
+    
+    def _check_no_enclosed_areas(self):
+        """Check that there are no fully enclosed areas"""
+        visited = set()
+        areas = []
+        
+        # Find all connected components
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                if (x, y) not in visited and self.map_data[y][x] == 1:
+                    area = set()
+                    self._flood_fill(x, y, area)
+                    if area:
+                        areas.append(area)
+                        visited.update(area)
+        
+        # If more than one connected component, we have enclosed areas
+        return len(areas) <= 1
+    
+    def _check_full_connectivity(self):
+        """Check that all walkable areas are connected"""
+        # Find first walkable position
+        start_x, start_y = None, None
+        for y in range(self.map_height):
+            for x in range(self.map_width):
+                if self.map_data[y][x] == 1:
+                    start_x, start_y = x, y
+                    break
+            if start_x is not None:
+                break
+        
+        if start_x is None:
+            return False  # No walkable areas
+        
+        # Count reachable positions
+        reachable = set()
+        self._flood_fill(start_x, start_y, reachable)
+        
+        # Count total walkable positions
+        total_walkable = sum(row.count(1) for row in self.map_data)
+        
+        return len(reachable) == total_walkable

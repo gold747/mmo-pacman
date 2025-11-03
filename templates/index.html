@@ -18,6 +18,9 @@
             <div class="header-content">
                 <h1>🎮 MMO Pacman</h1>
                 <div class="game-stats">
+                    <div class="stat power-indicator" id="power-indicator" style="display: none;">
+                        <span>⚡ POWER MODE!</span>
+                    </div>
                     <div class="stat">
                         <span class="stat-label">Score:</span>
                         <span id="score">0</span>
@@ -29,9 +32,6 @@
                     <div class="stat">
                         <span class="stat-label">Players:</span>
                         <span id="player-count">0</span>/30
-                    </div>
-                    <div class="stat power-indicator" id="power-indicator" style="display: none;">
-                        <span>⚡ POWER MODE!</span>
                     </div>
                 </div>
             </div>
@@ -51,10 +51,46 @@
                 </div>
             </div>
 
+            <!-- Lobby Screen -->
+            <div id="lobby-screen" class="screen" style="display: none;">
+                <div class="lobby-container">
+                    <h2>Game Lobby</h2>
+                    <div class="lobby-info">
+                        <div id="host-status"></div>
+                        <div class="player-count">
+                            <span>Players: </span>
+                            <span id="lobby-player-count">0</span>/30
+                        </div>
+                    </div>
+                    
+                    <div class="players-lobby-list">
+                        <h3>Players in Lobby:</h3>
+                        <div id="lobby-players-list"></div>
+                    </div>
+                    
+                    <div class="lobby-controls">
+                        <button id="start-game-btn" class="btn" style="display: none;">Start Game</button>
+                        <div id="waiting-message" style="display: none;">
+                            <p>Waiting for host to start the game...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Game Screen -->
             <div id="game-screen" class="screen" style="display: none;">
                 <div class="game-area">
                     <canvas id="game-canvas" width="800" height="600"></canvas>
+                    
+                    <!-- Death Message Overlay -->
+                    <div id="death-message" class="death-message" style="display: none;">
+                        <div class="death-content">
+                            <div class="death-icon">😅</div>
+                            <div class="death-text">You Died!</div>
+                            <div class="death-subtext">Respawning in <span id="respawn-timer">3</span>...</div>
+                        </div>
+                    </div>
+                    
                     <div class="game-controls">
                         <div class="control-info">
                             <h3>Controls:</h3>

@@ -112,18 +112,32 @@ def on_join_game(data):
         player.x, player.y = spawn_pos
         logger.info(f'[POSITION] Player positioned at: {player.x}, {player.y}')
         
-        # Send game state to new player
-        game_data = {
-            'player_id': request.sid,
-            'spawn_position': {'x': player.x, 'y': player.y},
-            'map_data': game_state.map_data,
-            'players': game_state.get_players_data(),
-            'ghosts': game_state.get_ghosts_data(),
-            'pellets': list(game_state.pellets),
-            'power_pellets': list(game_state.power_pellets)
-        }
-        logger.info(f'[GAMEDATA] Sending game_joined event with pellets: {len(game_data["pellets"])}, power_pellets: {len(game_data["power_pellets"])}')
-        emit('game_joined', game_data)
+        # Send appropriate data based on game state
+        if game_state.game_state == 'lobby':
+            # Send lobby data
+            lobby_data = {
+                'player_id': request.sid,
+                'lobby_state': game_state.get_lobby_state(),
+                'is_host': request.sid == game_state.host_player_id
+            }
+            emit('lobby_joined', lobby_data)
+            
+            # Notify all players of updated lobby state
+            socketio.emit('lobby_updated', game_state.get_lobby_state(), namespace='/')
+        else:
+            # Send full game state for active game
+            game_data = {
+                'player_id': request.sid,
+                'spawn_position': {'x': player.x, 'y': player.y},
+                'map_data': game_state.map_data,
+                'players': game_state.get_players_data(),
+                'ghosts': game_state.get_ghosts_data(),
+                'pellets': list(game_state.pellets),
+                'power_pellets': list(game_state.power_pellets),
+                'game_state': game_state.game_state
+            }
+            logger.info(f'[GAMEDATA] Sending game_joined event with pellets: {len(game_data["pellets"])}, power_pellets: {len(game_data["power_pellets"])}')
+            emit('game_joined', game_data)
         
         # Notify other players
         emit('player_joined', {
@@ -157,7 +171,8 @@ def on_player_move(data):
             emit('player_moved', {
                 'player_id': request.sid,
                 'position': {'x': player.x, 'y': player.y},
-                'direction': direction
+                'direction': direction,
+                'invincible': player.invincible
             }, broadcast=True)
             
             # Handle pellet collection
@@ -180,6 +195,55 @@ def on_player_move(data):
                     'power_timer': player.power_timer
                 }, broadcast=True)
 
+@socketio.on('start_game')
+def on_start_game():
+    """Handle game start request from host"""
+    success, message = game_state.start_game(request.sid)
+    
+    if success:
+        # Notify all players that the game has started
+        socketio.emit('game_started', {
+            'message': message,
+            'players': game_state.get_players_data(),
+            'ghosts': game_state.get_ghosts_data(),
+            'map_data': game_state.map_data,
+            'pellets': list(game_state.pellets),
+            'power_pellets': list(game_state.power_pellets)
+        }, namespace='/')
+        logger.info(f"Game started by host {request.sid}")
+    else:
+        # Send error message to requesting player
+        emit('start_game_error', {'error': message})
+
+@socketio.on('get_lobby_state')
+def on_get_lobby_state():
+    """Send current lobby state to requesting client"""
+    emit('lobby_state', game_state.get_lobby_state())
+
+@socketio.on('restart_game')
+def handle_restart_game():
+    """Handle host restarting the game"""
+    player_id = request.sid
+    
+    if player_id in game_state.players:
+        # Verify this player is the host
+        if player_id == game_state.host_player_id:
+            logger.info(f"[RESTART] Host {player_id} restarting game")
+            game_state.waiting_for_restart = False
+            
+            # Reset game state for new round
+            game_state.restart_round()
+            
+            socketio.emit('game_restarted', {
+                'message': 'Host started a new round!'
+            }, namespace='/')
+            
+        else:
+            logger.warning(f"[RESTART] Non-host player {player_id} tried to restart game")
+            emit('error', {'message': 'Only the host can restart the game'})
+    else:
+        logger.warning(f"[RESTART] Unknown player {player_id} tried to restart game")
+
 def game_loop():
     """Main game loop that runs continuously"""
     with app.app_context():
@@ -188,8 +252,8 @@ def game_loop():
             
         while True:
             try:
-                # Start first round when first player joins
-                if not first_round_started and len(game_state.players) > 0:
+                # Only start round if game is in playing state (not lobby)
+                if not first_round_started and len(game_state.players) > 0 and game_state.game_state == 'playing':
                     game_state.start_new_round()
                     first_round_started = True
                     logger.info(f"[ROUND_START] First round started with {len(game_state.players)} players")
@@ -199,80 +263,104 @@ def game_loop():
                 if round_end:
                     logger.info(f"[ROUND_END] {round_end['message']}")
                     
-                    # Check if we should show leaderboard (no players left)
-                    if round_end['type'] == 'no_players' or (round_end['type'] == 'all_dead' and len(game_state.players) == 0):
-                        logger.info("[LEADERBOARD] All players gone, showing final leaderboard")
-                        socketio.emit('game_ended', {
-                            'message': 'Game Over! Final Results:',
-                            'leaderboard': game_state.get_leaderboard()
-                        }, namespace='/')
-                        # Don't restart - wait for new players
-                        socketio.sleep(30)  # Show leaderboard for 30 seconds
-                        continue
+                    # Always show leaderboard when round ends
+                    leaderboard_data = game_state.get_leaderboard()
+                    host_id = None
+                    for player_id, player in game_state.players.items():
+                        if getattr(player, 'is_host', False):
+                            host_id = player_id
+                            break
                     
+                    logger.info(f"[LEADERBOARD] Round ended, showing leaderboard to all players")
                     socketio.emit('round_ended', {
                         'reason': round_end['type'],
                         'message': round_end['message'],
+                        'leaderboard': leaderboard_data,
+                        'host_id': host_id,
                         'round_status': game_state.get_round_status()
                     }, namespace='/')
                     
-                    # Wait 10 seconds then start new round if players remain
-                    socketio.sleep(10)
-                    if len(game_state.players) > 0:
+                    # Check if we should end the game (no players left)
+                    if round_end['type'] == 'no_players' or (round_end['type'] == 'all_dead' and len(game_state.players) == 0):
+                        logger.info("[GAME_END] All players gone, ending game")
+                        # Don't restart - wait for new players or host action
+                        socketio.sleep(30)  # Show leaderboard for 30 seconds
+                        continue
+                    
+                    # Wait for host to restart or timeout after 60 seconds
+                    game_state.waiting_for_restart = True
+                    restart_timeout = 60
+                    elapsed = 0
+                    
+                    while game_state.waiting_for_restart and elapsed < restart_timeout:
+                        socketio.sleep(1)
+                        elapsed += 1
+                    
+                    # If no restart command from host, auto-restart if players remain
+                    if game_state.waiting_for_restart and len(game_state.players) > 0:
+                        game_state.waiting_for_restart = False
+                        logger.info("[AUTO_RESTART] Host didn't restart, auto-restarting round")
+                    if len(game_state.players) > 0 and game_state.game_state == 'playing':
                         game_state.start_new_round()
                         socketio.emit('round_started', {
                             'message': 'New round started!',
                             'round_status': game_state.get_round_status(),
                             'players': game_state.get_players_data()
                         }, namespace='/')
+                    elif game_state.game_state == 'lobby':
+                        # If game ended and we're back in lobby, reset first_round_started
+                        first_round_started = False
                 
-                # Update ghosts
-                game_state.update_ghosts()
-                
-                # Check ghost collisions with players
-                collisions = game_state.check_ghost_collisions()
-                
-                if collisions:
-                    for collision in collisions:
-                        if collision['type'] == 'ghost_eaten':
-                            logger.info(f"[GHOST_EATEN] Player {collision['player_id']} ate ghost {collision['ghost_id']}! Score: {collision['score']}")
-                        elif collision['type'] == 'player_caught':
-                            logger.info(f"[PLAYER_CAUGHT] Ghost {collision['ghost_id']} caught player {collision['player_id']}! Lives: {collision['lives']}")
-                        elif collision['type'] == 'player_died':
-                            logger.info(f"[PLAYER_DIED] Player {collision['player_id']} died to ghost {collision['ghost_id']}! Now spectator")
-                        
-                        socketio.emit('player_caught', collision, namespace='/')
-                
-                # Check for power mode changes and broadcast
-                for player_id, player in game_state.players.items():
-                    if hasattr(player, '_last_power_mode'):
-                        if player._last_power_mode != player.power_mode:
-                            logger.info(f"[POWER] Player {player_id} power mode changed: {player.power_mode} (timer: {player.power_timer})")
-                            socketio.emit('power_mode_changed', {
-                                'player_id': player_id,
-                                'power_mode': player.power_mode,
-                                'power_timer': player.power_timer
-                            }, namespace='/')
-                    player._last_power_mode = player.power_mode
-                
-                # Broadcast ghost positions
-                if game_state.ghosts:
-                    ghost_update_counter += 1
-                    socketio.emit('ghosts_updated', {
-                        'ghosts': game_state.get_ghosts_data()
-                    }, namespace='/')
-                    # Only log ghost updates every 50 iterations (5 seconds at 10 FPS)
-                    if ghost_update_counter % 50 == 0:
-                        logger.debug(f"Ghost update #{ghost_update_counter} sent to {len(game_state.players)} players")
+                # Only run game logic when in playing state
+                if game_state.game_state == 'playing':
+                    # Update ghosts
+                    game_state.update_ghosts()
+                    
+                    # Check ghost collisions with players
+                    collisions = game_state.check_ghost_collisions()
+                    
+                    if collisions:
+                        for collision in collisions:
+                            if collision['type'] == 'ghost_eaten':
+                                logger.info(f"[GHOST_EATEN] Player {collision['player_id']} ate ghost {collision['ghost_id']}! Score: {collision['score']}")
+                            elif collision['type'] == 'player_caught':
+                                logger.info(f"[PLAYER_CAUGHT] Ghost {collision['ghost_id']} caught player {collision['player_id']}! Lives: {collision['lives']}")
+                            elif collision['type'] == 'player_died':
+                                logger.info(f"[PLAYER_DIED] Player {collision['player_id']} died to ghost {collision['ghost_id']}! Now spectator")
+                            
+                            socketio.emit('player_caught', collision, namespace='/')
+                    
+                    # Check for power mode changes and broadcast
+                    for player_id, player in game_state.players.items():
+                        if hasattr(player, '_last_power_mode'):
+                            if player._last_power_mode != player.power_mode:
+                                logger.info(f"[POWER] Player {player_id} power mode changed: {player.power_mode} (timer: {player.power_timer})")
+                                socketio.emit('power_mode_changed', {
+                                    'player_id': player_id,
+                                    'power_mode': player.power_mode,
+                                    'power_timer': player.power_timer
+                                }, namespace='/')
+                        player._last_power_mode = player.power_mode
+                    
+                    # Broadcast ghost positions
+                    if game_state.ghosts:
+                        ghost_update_counter += 1
+                        socketio.emit('ghosts_updated', {
+                            'ghosts': game_state.get_ghosts_data()
+                        }, namespace='/')
+                        # Only log ghost updates every 50 iterations (5 seconds at 10 FPS)
+                        if ghost_update_counter % 50 == 0:
+                            logger.debug(f"Ghost update #{ghost_update_counter} sent to {len(game_state.players)} players")
             except Exception as e:
                 logger.error(f"[ERROR] Error in game loop: {e}")
                 # don't return/continue before tick() runs; we'll fall through to finally
             finally:
-                # Always advance timers/state even if an error occurred earlier
-                try:
-                    game_state.tick()
-                except Exception as tick_err:
-                    logger.error(f"[ERROR] Error while ticking game state: {tick_err}")
+                # Only advance timers/state when game is playing
+                if game_state.game_state == 'playing':
+                    try:
+                        game_state.tick()
+                    except Exception as tick_err:
+                        logger.error(f"[ERROR] Error while ticking game state: {tick_err}")
 
             # Sleep for game tick (60 FPS = ~16.67ms per frame)
             time.sleep(0.1)  # 10 FPS for server updates

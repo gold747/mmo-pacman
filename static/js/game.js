@@ -25,10 +25,15 @@ class MMOPacmanGame {
         
         // UI elements
         this.loginScreen = document.getElementById('login-screen');
+        this.lobbyScreen = document.getElementById('lobby-screen');
         this.gameScreen = document.getElementById('game-screen');
         this.gameOverScreen = document.getElementById('game-over-screen');
         this.connectionStatus = document.getElementById('connection-status');
         this.connectionText = document.getElementById('connection-text');
+        
+        // Lobby state
+        this.isHost = false;
+        this.gameState = 'lobby';
         
         // Initialize
         this.init();
@@ -172,6 +177,7 @@ class MMOPacmanGame {
             if (this.players[data.player_id]) {
                 this.players[data.player_id].position = data.position;
                 this.players[data.player_id].direction = data.direction;
+                this.players[data.player_id].invincible = data.invincible || false;
             }
 
             // Debug: log when we receive our own movement update
@@ -210,7 +216,9 @@ class MMOPacmanGame {
         this.socket.on('player_caught', (data) => {
             if (data.type === 'player_died' && data.player_id === this.playerId) {
                 console.log('You died! Entering spectator mode...');
-                this.showSpectatorMode();
+                this.showDeathMessage('Game Over!', 'You have no lives left', () => {
+                    this.showSpectatorMode();
+                });
             } else if (data.type === 'player_caught') {
                 console.log(`Player ${data.player_id} was caught by ghost ${data.ghost_id}, lives: ${data.lives}`);
                 console.log(`DEBUG: Respawn position:`, data.respawn_pos);
@@ -218,11 +226,14 @@ class MMOPacmanGame {
                     const oldPos = {...this.players[data.player_id].position};
                     this.players[data.player_id].lives = data.lives;
                     this.players[data.player_id].position = data.respawn_pos;
-                    console.log(`DEBUG: Updated player ${data.player_id} position from`, oldPos, 'to', data.respawn_pos);
+                    this.players[data.player_id].invincible = data.invincible || false;
+                    console.log(`DEBUG: Updated player ${data.player_id} position from`, oldPos, 'to', data.respawn_pos, 'invincible:', data.invincible);
                 }
                 if (data.player_id === this.playerId) {
                     console.log(`DEBUG: Centering camera on respawn position:`, data.respawn_pos);
-                    this.centerCameraOnPlayer(data.respawn_pos);
+                    this.showDeathMessage('You Died!', 'Respawning with 10s invincibility', () => {
+                        this.centerCameraOnPlayer(data.respawn_pos);
+                    });
                 }
             } else if (data.type === 'ghost_eaten') {
                 console.log(`Player ${data.player_id} ate ghost ${data.ghost_id}! New score: ${data.score}`);
@@ -253,7 +264,7 @@ class MMOPacmanGame {
         
         this.socket.on('round_ended', (data) => {
             console.log(`Round ended: ${data.message}`);
-            this.showJoinStatus(`Round ended: ${data.message}. New round starting in 10 seconds...`, false);
+            this.showRoundEndLeaderboard(data.message, data.leaderboard, data.host_id);
         });
         
         this.socket.on('round_started', (data) => {
@@ -277,6 +288,38 @@ class MMOPacmanGame {
         this.socket.on('game_ended', (data) => {
             console.log('Game ended with leaderboard:', data);
             this.showLeaderboard(data.message, data.leaderboard);
+        });
+
+        this.socket.on('game_restarted', (data) => {
+            console.log('Game restarted by host:', data.message);
+            this.hideRoundEndLeaderboard();
+            this.showJoinStatus(data.message, true);
+        });
+
+        // Lobby-related handlers
+        this.socket.on('lobby_joined', (data) => {
+            console.log('Joined lobby:', data);
+            this.playerId = data.player_id;
+            this.isHost = data.is_host;
+            this.gameState = 'lobby';
+            this.showLobbyScreen(data.lobby_state);
+        });
+
+        this.socket.on('lobby_updated', (data) => {
+            console.log('Lobby updated:', data);
+            this.updateLobbyDisplay(data);
+        });
+
+        this.socket.on('game_started', (data) => {
+            console.log('Game started:', data);
+            this.gameState = 'playing';
+            this.initializeGameFromData(data);
+            this.showGameScreen();
+        });
+
+        this.socket.on('start_game_error', (data) => {
+            console.log('Start game error:', data.error);
+            alert(data.error);
         });
     }
     
@@ -439,7 +482,7 @@ class MMOPacmanGame {
                     this.ctx.lineWidth = 1;
                     this.ctx.strokeRect(screenX, screenY, this.tileSize, this.tileSize);
                 } else if (tileType === 2) { // Spawn point
-                    this.ctx.fillStyle = '#003300';
+                    this.ctx.fillStyle = '#000000';
                     this.ctx.fillRect(screenX, screenY, this.tileSize, this.tileSize);
                 }
             }
@@ -755,6 +798,40 @@ class MMOPacmanGame {
         this.gameOverScreen.style.display = 'none';
     }
     
+    showDeathMessage(mainText, subText, callback) {
+        const deathMessage = document.getElementById('death-message');
+        const deathTextEl = deathMessage.querySelector('.death-text');
+        const deathSubtextEl = deathMessage.querySelector('.death-subtext');
+        const respawnTimerEl = document.getElementById('respawn-timer');
+        
+        // Set custom text
+        deathTextEl.textContent = mainText;
+        
+        // Show the death message
+        deathMessage.style.display = 'flex';
+        
+        // Start countdown timer
+        let countdown = 3;
+        respawnTimerEl.textContent = countdown;
+        deathSubtextEl.innerHTML = `${subText} <span id="respawn-timer">${countdown}</span>...`;
+        
+        const countdownInterval = setInterval(() => {
+            countdown--;
+            const timer = document.getElementById('respawn-timer');
+            if (timer) {
+                timer.textContent = countdown;
+            }
+            
+            if (countdown <= 0) {
+                clearInterval(countdownInterval);
+                deathMessage.style.display = 'none';
+                if (callback) {
+                    callback();
+                }
+            }
+        }, 1000);
+    }
+
     showSpectatorMode() {
         const player = this.players[this.playerId];
         if (player) {
@@ -815,6 +892,72 @@ class MMOPacmanGame {
         this.showJoinStatus('Game Over! Check the leaderboard above.', false);
     }
 
+    showRoundEndLeaderboard(message, leaderboard, hostId) {
+        // Create or update round end leaderboard overlay
+        let overlay = document.getElementById('round-end-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'round-end-overlay';
+            overlay.className = 'round-end-overlay';
+            document.body.appendChild(overlay);
+        }
+
+        let leaderboardHTML = `
+            <div class="round-end-content">
+                <h2>🏁 Round Complete! 🏁</h2>
+                <p>${message}</p>
+                <div class="leaderboard-final">`;
+        
+        leaderboard.forEach((player, index) => {
+            const rank = index + 1;
+            const trophy = rank === 1 ? '🏆' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+            leaderboardHTML += `
+                <div class="leaderboard-entry ${player.name === this.playerName ? 'self' : ''}">
+                    <span class="rank">${rank}${trophy}</span>
+                    <span class="name">${player.name}</span>
+                    <span class="score">${player.score} pts</span>
+                </div>`;
+        });
+        
+        leaderboardHTML += `</div>`;
+        
+        // Add host controls if this player is the host
+        if (this.playerId === hostId) {
+            leaderboardHTML += `
+                <div class="host-controls">
+                    <button id="play-again-btn" class="btn">🚀 Start New Round</button>
+                    <p class="host-info">You are the host - click to start a new round!</p>
+                </div>`;
+        } else {
+            leaderboardHTML += `
+                <div class="waiting-info">
+                    <p>⏳ Waiting for host to start next round...</p>
+                    <p class="auto-restart-info">Auto-restart in 60 seconds if host doesn't restart</p>
+                </div>`;
+        }
+        
+        leaderboardHTML += `</div>`;
+        overlay.innerHTML = leaderboardHTML;
+        overlay.style.display = 'flex';
+
+        // Add play again button handler
+        const playAgainBtn = document.getElementById('play-again-btn');
+        if (playAgainBtn) {
+            playAgainBtn.addEventListener('click', () => {
+                this.socket.emit('restart_game');
+                playAgainBtn.disabled = true;
+                playAgainBtn.textContent = 'Starting...';
+            });
+        }
+    }
+
+    hideRoundEndLeaderboard() {
+        const overlay = document.getElementById('round-end-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+        }
+    }
+
     showGameOver() {
         const player = this.players[this.playerId];
         document.getElementById('final-score').textContent = `Final Score: ${player ? player.score : 0}`;
@@ -843,6 +986,100 @@ class MMOPacmanGame {
             powerIndicator.offsetHeight; // Trigger reflow
             powerIndicator.style.animation = 'pulse 0.5s ease-in-out';
         }
+    }
+
+    showLobbyScreen(lobbyState) {
+        console.log('Showing lobby screen');
+        this.loginScreen.style.display = 'none';
+        this.gameScreen.style.display = 'none';
+        this.gameOverScreen.style.display = 'none';
+        this.lobbyScreen.style.display = 'block';
+        
+        this.updateLobbyDisplay(lobbyState);
+        this.setupLobbyControls();
+    }
+
+    updateLobbyDisplay(lobbyState) {
+        // Update player count
+        document.getElementById('lobby-player-count').textContent = lobbyState.player_count;
+        
+        // Update host status
+        const hostStatus = document.getElementById('host-status');
+        if (this.isHost) {
+            hostStatus.textContent = '👑 You are the host';
+            hostStatus.style.color = '#44ff44';
+        } else {
+            const hostPlayer = lobbyState.players.find(p => p.is_host);
+            hostStatus.textContent = hostPlayer ? `👑 Host: ${hostPlayer.name}` : 'No host';
+            hostStatus.style.color = '#ffaa00';
+        }
+        
+        // Update players list
+        const playersList = document.getElementById('lobby-players-list');
+        playersList.innerHTML = '';
+        
+        lobbyState.players.forEach(player => {
+            const playerItem = document.createElement('div');
+            playerItem.className = 'lobby-player-item';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = player.name;
+            if (player.is_host) {
+                nameSpan.className = 'lobby-player-host';
+                nameSpan.textContent = '👑 ' + player.name;
+            }
+            
+            playerItem.appendChild(nameSpan);
+            playersList.appendChild(playerItem);
+        });
+        
+        // Show/hide controls based on host status
+        const startButton = document.getElementById('start-game-btn');
+        const waitingMessage = document.getElementById('waiting-message');
+        
+        if (this.isHost) {
+            startButton.style.display = 'block';
+            waitingMessage.style.display = 'none';
+        } else {
+            startButton.style.display = 'none';
+            waitingMessage.style.display = 'block';
+        }
+    }
+
+    setupLobbyControls() {
+        const startButton = document.getElementById('start-game-btn');
+        startButton.onclick = () => {
+            console.log('Starting game...');
+            this.socket.emit('start_game');
+        };
+    }
+
+    initializeGameFromData(data) {
+        // Initialize game state from server data
+        this.mapData = data.map_data;
+        this.players = data.players || {};
+        this.ghosts = data.ghosts || [];
+        
+        // Convert pellets and power pellets to coordinate string format
+        this.pellets = new Set((data.pellets || []).map(p => `${p[0]},${p[1]}`));
+        this.powerPellets = new Set((data.power_pellets || []).map(p => `${p[0]},${p[1]}`));
+        
+        // Set camera position
+        if (this.playerId && this.players[this.playerId]) {
+            const player = this.players[this.playerId];
+            this.centerCameraOnPlayer(player.position);
+        }
+    }
+
+    showGameScreen() {
+        console.log('Showing game screen');
+        this.loginScreen.style.display = 'none';
+        this.lobbyScreen.style.display = 'none';
+        this.gameOverScreen.style.display = 'none';
+        this.gameScreen.style.display = 'block';
+        
+        // Start the game loop
+        this.startGameLoop();
     }
 }
 

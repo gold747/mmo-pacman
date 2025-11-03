@@ -1,0 +1,55 @@
+{
+  "pacman_map_design_principles": {
+    "core_mechanics_support": {
+      "pellet_density": {
+        "description": "The distribution of regular pac-dots, ensuring the player can create continuous, long-path routes to maximize points and efficiency.",
+        "value": "High (240 dots in original)",
+        "importance": "Critical"
+      },
+      "energizer_placement": {
+        "description": "The strategic positioning of the four larger 'energizer' pellets, typically in the corners, creating 'risk vs. reward' zones and temporary safe havens.",
+        "value": "Four fixed, high-value locations",
+        "importance": "High"
+      },
+      "dot_collection_path": {
+        "description": "The maze's structure must ensure that eating all dots is an achievable (though not perfectly Eulerian, due to odd vertices) and challenging goal, often requiring repetition of certain paths.",
+        "value": "Non-Eulerian (forces path repetition)",
+        "importance": "Critical"
+      }
+    },
+    "structural_elements": {
+      "symmetry": {
+        "description": "The map is left-right symmetrical, making the overall navigation and dot-clearing strategy mentally simpler and more balanced.",
+        "value": "Left-Right Mirroring",
+        "importance": "High"
+      },
+      "tunnels": {
+        "description": "Wrap-around tunnels on the left and right edges provide shortcuts or 'escape routes' that temporarily reduce the speed of the ghosts, adding a layer of tactical retreat.",
+        "value": "One horizontal warp-tunnel",
+        "importance": "High"
+      },
+      "junctions_and_intersections": {
+        "description": "A varied mix of 2-way (corridors), 3-way, and 4-way intersections to create decision points, escape options, and opportunities for 'juke' moves against the ghosts.",
+        "value": "Varied distribution",
+        "importance": "Critical"
+      },
+      "ghost_house": {
+        "description": "A central, controlled area where ghosts start and respawn. This area is typically inaccessible to Pac-Man, allowing the ghosts to reset their pursuit.",
+        "value": "Central 'Safe Zone'",
+        "importance": "High"
+      }
+    },
+    "challenge_and_flow": {
+      "pacings": {
+        "description": "The map must allow for varying tempos—periods of high-speed chase and low-risk clearing—to create a dynamic flow and pacing in the game.",
+        "value": "Alternating high/low risk zones",
+        "importance": "High"
+      },
+      "bottlenecks": {
+        "description": "Narrow corridors or few intersection options in certain areas that create high-risk situations for Pac-Man but allow the ghosts to effectively coordinate their traps.",
+        "value": "Strategically placed choke points",
+        "importance": "High"
+      }
+    }
+  }
+}
