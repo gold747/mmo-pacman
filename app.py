@@ -478,4 +478,5 @@ if __name__ == '__main__':
     # Run the server without the Werkzeug reloader (reloader can spawn multiple processes/threads
     # and cause problems in some development environments like VS Code). Turn off debug to
     # prevent the reloader from running; you can enable debug separately if needed.
-    socketio.run(app, host='0.0.0.0', port=8080, debug=False, use_reloader=False)
+    # Allow unsafe werkzeug for production deployment (needed for Flask-SocketIO in production)
+    socketio.run(app, host='0.0.0.0', port=8080, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
