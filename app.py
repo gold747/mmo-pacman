@@ -139,7 +139,7 @@ def index():
         except:
             server_ip = 'localhost'
     
-    server_port = 80  # HTTP default port
+    server_port = 8080  # Alternative HTTP port
     
     return render_template('index.html', server_ip=server_ip, server_port=server_port)
 
@@ -463,7 +463,7 @@ def game_loop():
 
 if __name__ == '__main__':
     print("[STARTUP] Starting MMO Pacman server...")
-    print("[STARTUP] Navigate to http://localhost to play")
+    print("[STARTUP] Navigate to http://localhost:8080 to play")
     
     # Start the game loop as a Socket.IO background task to avoid blocking
     socketio.start_background_task(game_loop)
@@ -472,4 +472,4 @@ if __name__ == '__main__':
     # Run the server without the Werkzeug reloader (reloader can spawn multiple processes/threads
     # and cause problems in some development environments like VS Code). Turn off debug to
     # prevent the reloader from running; you can enable debug separately if needed.
-    socketio.run(app, host='0.0.0.0', port=80, debug=False, use_reloader=False)
+    socketio.run(app, host='0.0.0.0', port=8080, debug=False, use_reloader=False)
