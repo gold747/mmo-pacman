@@ -361,8 +361,8 @@ class MMOPacmanGame {
             // Hide any overlays
             this.hideRoundEndLeaderboard();
             
-            // Show lobby screen
-            this.showLobbyScreen();
+            // Show lobby screen with lobby state data
+            this.showLobbyScreen(data);
             
             this.updateLobbyDisplay(data);
         });
