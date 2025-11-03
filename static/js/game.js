@@ -179,6 +179,7 @@ class MMOPacmanGame {
                 this.players[data.player_id].position = data.position;
                 this.players[data.player_id].direction = data.direction;
                 this.players[data.player_id].invincible = data.invincible || false;
+                this.players[data.player_id].is_spectator = data.is_spectator || false;
             }
 
             // Debug: log when we receive our own movement update

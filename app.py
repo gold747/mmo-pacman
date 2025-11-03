@@ -172,7 +172,8 @@ def on_player_move(data):
                 'player_id': request.sid,
                 'position': {'x': player.x, 'y': player.y},
                 'direction': direction,
-                'invincible': player.invincible
+                'invincible': player.invincible,
+                'is_spectator': getattr(player, 'is_spectator', False)
             }, broadcast=True)
             
             # Handle pellet collection
