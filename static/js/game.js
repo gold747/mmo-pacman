@@ -679,8 +679,8 @@ class MMOPacmanGame {
                 
                 // Player body (Pacman)
                 let alpha = 1; // Default opacity
-                if (player.invincible) {
-                    // Flash during invincibility (50% opacity alternating)
+                if (player.invincible && playerId === this.playerId) {
+                    // Flash during invincibility (50% opacity alternating) - only for own player
                     alpha = Math.sin(Date.now() * 0.02) > 0 ? 1 : 0.3;
                 }
                 
