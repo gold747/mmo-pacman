@@ -1173,6 +1173,11 @@ class GameState:
             return False
         
         player = self.players[player_id]
+        
+        # Spectators cannot move
+        if getattr(player, 'is_spectator', False):
+            return False
+            
         new_x, new_y = player.x, player.y
         
         # Calculate new position based on direction
@@ -1416,7 +1421,7 @@ class GameState:
                     self.logger.debug(f"Player {player.id} invincible for {player.invincibility_timer} more ticks")
     
     def get_players_data(self):
-        """Get all player data for broadcasting"""
+        """Get all player data for broadcasting (excludes spectators)"""
         return {
             player_id: {
                 'name': player.name,
@@ -1432,6 +1437,7 @@ class GameState:
                 'is_spectator': getattr(player, 'is_spectator', False)
             }
             for player_id, player in self.players.items()
+            if not getattr(player, 'is_spectator', False)  # Exclude spectators from broadcast
         }
     
     def start_new_round(self):

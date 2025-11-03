@@ -235,6 +235,12 @@ class MMOPacmanGame {
                         this.showSpectatorMode();
                     });
                 }
+            } else if (data.type === 'player_died') {
+                // Another player died - remove them from view
+                console.log(`Player ${data.player_id} died and became spectator`);
+                if (this.players[data.player_id]) {
+                    delete this.players[data.player_id];
+                }
             } else if (data.type === 'player_caught') {
                 console.log(`Player ${data.player_id} was caught by ghost ${data.ghost_id}, lives: ${data.lives}`);
                 console.log(`DEBUG: Respawn position:`, data.respawn_pos);
